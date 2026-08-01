@@ -22,6 +22,28 @@ if not SharedData then
     SharedData.Parent = ReplicatedStorage
 end
 
+-- Création du dossier RemoteEvents et des événements
+local RemoteEvents = ReplicatedStorage:FindFirstChild("RemoteEvents")
+if not RemoteEvents then
+    RemoteEvents = Instance.new("Folder")
+    RemoteEvents.Name = "RemoteEvents"
+    RemoteEvents.Parent = ReplicatedStorage
+end
+
+local AssignRoleEvent = RemoteEvents:FindFirstChild("AssignRole")
+if not AssignRoleEvent then
+    AssignRoleEvent = Instance.new("RemoteEvent")
+    AssignRoleEvent.Name = "AssignRole"
+    AssignRoleEvent.Parent = RemoteEvents
+end
+
+local TraitorSabotageEvent = RemoteEvents:FindFirstChild("TraitorSabotage")
+if not TraitorSabotageEvent then
+    TraitorSabotageEvent = Instance.new("RemoteEvent")
+    TraitorSabotageEvent.Name = "TraitorSabotage"
+    TraitorSabotageEvent.Parent = RemoteEvents
+end
+
 -- Création des signaux de communication
 local StartGameSignal = ReplicatedStorage:FindFirstChild("StartGameSignal")
 if not StartGameSignal then
@@ -41,13 +63,15 @@ end
 local gameActive = false
 local nightCount = 0
 
--- Paramètres d'éclairage
+-- Paramètres d'éclairage (Avec le mouvement du soleil !)
 local DAY_LIGHTING = {
     Brightness = 2,
     OutdoorAmbient = Color3.fromRGB(128, 128, 128),
     Ambient = Color3.fromRGB(180, 180, 180),
     FogEnd = 1000,
-    FogColor = Color3.fromRGB(191, 191, 191)
+    FogColor = Color3.fromRGB(191, 191, 191),
+    ClockTime = 14,
+    ClockTime = 14
 }
 
 local NIGHT_LIGHTING = {
@@ -55,7 +79,9 @@ local NIGHT_LIGHTING = {
     OutdoorAmbient = Color3.fromRGB(25, 15, 40),
     Ambient = Color3.fromRGB(40, 30, 60),
     FogEnd = 300,
-    FogColor = Color3.fromRGB(30, 20, 50)
+    FogColor = Color3.fromRGB(30, 20, 50),
+    ClockTime = 0,
+    ClockTime = 0
 }
 
 -- Fonction de transition d'éclairage
@@ -67,18 +93,15 @@ local function transitionLighting(targetSettings)
     local ambientGoal = {Ambient = targetSettings.Ambient}
     local fogEndGoal = {FogEnd = targetSettings.FogEnd}
     local fogColorGoal = {FogColor = targetSettings.FogColor}
+    local clockTimeGoal = {ClockTime = targetSettings.ClockTime}
+    local clockTimeGoal = {ClockTime = targetSettings.ClockTime}
     
-    local brightnessTween = TweenService:Create(Lighting, tweenInfo, brightnessGoal)
-    local outdoorAmbientTween = TweenService:Create(Lighting, tweenInfo, outdoorAmbientGoal)
-    local ambientTween = TweenService:Create(Lighting, tweenInfo, ambientGoal)
-    local fogEndTween = TweenService:Create(Lighting, tweenInfo, fogEndGoal)
-    local fogColorTween = TweenService:Create(Lighting, tweenInfo, fogColorGoal)
-    
-    brightnessTween:Play()
-    outdoorAmbientTween:Play()
-    ambientTween:Play()
-    fogEndTween:Play()
-    fogColorTween:Play()
+    TweenService:Create(Lighting, tweenInfo, brightnessGoal):Play()
+    TweenService:Create(Lighting, tweenInfo, outdoorAmbientGoal):Play()
+    TweenService:Create(Lighting, tweenInfo, ambientGoal):Play()
+    TweenService:Create(Lighting, tweenInfo, fogEndGoal):Play()
+    TweenService:Create(Lighting, tweenInfo, fogColorGoal):Play()
+    TweenService:Create(Lighting, tweenInfo, clockTimeGoal):Play()
 end
 
 -- Fonction de mise à jour de la phase

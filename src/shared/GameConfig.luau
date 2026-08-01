@@ -5,12 +5,12 @@
 local GameConfig = {}
 
 -- Durées des phases (en secondes)
-GameConfig.DAY_DURATION = 15      -- TEST
-GameConfig.VOTE_DURATION = 10      -- TEST
-GameConfig.NIGHT_DURATION = 30    -- TEST
+GameConfig.DAY_DURATION = 180
+GameConfig.VOTE_DURATION = 5
+GameConfig.NIGHT_DURATION = 45
 
 -- Joueurs
-GameConfig.MIN_PLAYERS = 4
+GameConfig.MIN_PLAYERS = 1
 
 -- Monstres
 GameConfig.BASE_MONSTER_COUNT = 2

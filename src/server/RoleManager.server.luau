@@ -7,7 +7,7 @@ RoleManager.PlayerRoles = {}
 RoleManager.IsGameStarted = false
 
 local TRAITOR_RATIO = 0.2
-local MIN_PLAYERS = 4
+local MIN_PLAYERS = 1
 
 local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents")
 local AssignRoleEvent = RemoteEvents:WaitForChild("AssignRole") or Instance.new("RemoteEvent")
@@ -42,7 +42,7 @@ local function assignRoles()
 
     RoleManager.PlayerRoles = {}
 
-    local numTraitors = math.max(1, math.floor(#activePlayers * TRAITOR_RATIO))
+    local numTraitors = 0 -- Modifié pour test solo
     local shuffledPlayers = shuffleTable(activePlayers)
 
     for i, player in ipairs(shuffledPlayers) do

@@ -22,14 +22,14 @@ local RunService = game:GetService("RunService")
 local GameConfig = require(ReplicatedStorage.Modules.GameConfig)
 
 -- Configuration
-local MONSTER_DETECT_RANGE = 15 -- Distance de détection des joueurs
+local MONSTER_DETECT_RANGE = 200 -- Distance de détection des joueurs
 local MONSTER_ATTACK_DAMAGE = 10 -- Dégâts aux joueurs
 local MONSTER_DOOR_DAMAGE = 5 -- Dégâts aux portes
 local MONSTER_ATTACK_COOLDOWN = 2 -- Secondes entre les attaques
 local PATHFINDING_RECALCULATE_INTERVAL = 3 -- Recalculer le chemin toutes les N secondes
 local DOOR_MAX_HEALTH = 500 -- Points de vie initiaux d'une porte
 local MONSTER_HEALTH = 100 -- Points de vie d'un monstre
-local MONSTER_WALK_SPEED = 12 -- Vitesse de déplacement
+local MONSTER_WALK_SPEED = 80 -- Vitesse de déplacement
 
 -- État global
 local activeMonsters = {}
@@ -174,9 +174,9 @@ end
 local function initializeDoors()
 	doors = {}
 	
-	local fortifications = workspace:FindFirstChild("Village")
+	local fortifications = workspace:WaitForChild("Village", 10)
 	if fortifications then
-		fortifications = fortifications:FindFirstChild("Fortifications")
+		fortifications = fortifications:WaitForChild("Fortifications", 10)
 	end
 	
 	if not fortifications then
