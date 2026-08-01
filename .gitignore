@@ -1,0 +1,12 @@
+# Project place file
+/village-maudit.rbxlx
+
+# Roblox Studio lock files
+/*.rbxlx.lock
+/*.rbxl.lock
+
+sourcemap.json
+venv/
+__pycache__/
+.DS_Store
+*.log
