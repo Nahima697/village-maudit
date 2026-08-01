@@ -1,15 +1,11 @@
-Jeu Roblox : "Village Maudit".
-Type : Nouveau script serveur (chemin : src/server/NightMechanics.server.luau).
+Jeu Roblox : "Village Maudit" (Jeu de déduction sociale et de survie horrifique).
+Type : Script serveur (chemin : src/server/NightMechanics.server.luau).
 
 # Objectif
-Implémenter 3 mécaniques de survie qui s'activent la nuit (18:00 à 06:00) en surveillant `Lighting:GetPropertyChangedSignal("ClockTime")`.
+Gérer la phase nocturne (18:00 à 06:00) en veillant sur le service `Lighting`. 
 
 # Contraintes Techniques Strictes
-1. Variable d'état : Utilise un booléen `isNight` pour ne déclencher les modifications d'environnement (Brouillard et Portes) qu'au moment de la transition afin d'éviter le spam de calculs.
-2. Le Brouillard : La nuit, règle `Lighting.FogEnd` sur 40 et `Lighting.FogColor` sur Color3.new(0, 0, 0). Le jour, remets des valeurs normales (ex: FogEnd à 10000).
-3. Les Refuges : Parcourt le `workspace` pour trouver tous les objets nommés "RefugeDoor". La nuit, ils s'ouvrent (Transparency = 0.5, CanCollide = false ou l'équivalent logique pour laisser passer les joueurs terrifiés), et le jour ils se referment.
-4. L'Ombre Mortelle : Utilise un `task.spawn` avec une boucle `while task.wait(2) do`. Si `isNight` est vrai, vérifie la distance entre les joueurs et les feux/refuges : si un joueur est trop isolé dans le noir, applique-lui une pénalité ou fais spawner une menace discrète.
-5. Le code doit être robuste, optimisé et gérer l'absence éventuelle des dossiers ou pièces requises.
-
-# Format de Sortie
-Renvoie UNIQUEMENT le code Luau en texte brut. N'inclus aucune explication, et n'utilise AUCUNE balise markdown.
+1. Cycle et État : Utilise un booléen `isNight`. Quand la nuit tombe, l'éclairage s'assombrit lourdement.
+2. Apparition des Monstres : La nuit, fais spawner des entités hostiles (les monstres) aux abords du village qui se dirigent vers les joueurs ou les bâtiments.
+3. Le Rôle des Traîtres (Base) : Prépare une structure de données ou un attribut sur les joueurs (`isTraitor`) assigné au début de la partie. La nuit, les traîtres disposent d'une interaction spéciale ( sabotage de portes ou silence radio) pour aider les monstres de l'intérieur, sans se faire repérer par les villageois loyaux.
+4. Le code doit être propre, modulaire et en Luau pur, sans balise markdown.
