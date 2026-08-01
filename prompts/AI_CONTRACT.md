@@ -18,3 +18,7 @@ Le projet utilise plusieurs scripts autonomes (`.server.luau`) qui démarrent en
 ## 4. Communication entre scripts
 * Les variables globales d'état (comme la phase actuelle ou le compteur de nuits) doivent être stockées sous forme d'attributs dans `ReplicatedStorage.SharedData`.
 * Les scripts autonomes doivent utiliser `SharedData:GetAttributeChangedSignal("CurrentPhase")` pour réagir aux changements de phase du jeu, plutôt que de faire des boucles `while` indépendantes.
+
+## 5. Syntaxe et Formatage du Code (Zéro Markdown)
+* **Zéro Markdown dans les fichiers source :** N'insère JAMAIS de balises Markdown (comme ` ```luau ` ou ` ``` `) à l'intérieur des fichiers `.luau`. Le code doit être brut et prêt à être compilé.
+* **Commentaires Luau stricts :** Les commentaires s'écrivent exclusivement avec `--` ou `--[[ ]]`. N'utilise JAMAIS le symbole `#` pour faire un commentaire ou un titre dans un fichier de code, cela provoque des erreurs fatales de parsing.
