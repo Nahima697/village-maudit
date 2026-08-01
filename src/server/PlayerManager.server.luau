@@ -1,53 +1,46 @@
-# PlayerManager.server.luau
-
-Voici un système complet de gestion de survie pour Roblox :
-
-
 --!strict
 -- PlayerManager.server.luau
 -- Gère l'état de santé et de survie des joueurs
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local Lighting = game:GetService("Lighting")
 
 -- ============================
 -- CONFIGURATION
 -- ============================
 
 local Config = {
-	-- Valeurs initiales
 	InitialHealth = 100,
 	InitialMentalHealth = 100,
 	InitialStamina = 100,
 	InitialHunger = 100,
 	InitialThirst = 100,
-	
-	-- Taux de dégradation (par seconde)
+
 	HungerDecayRate = 0.15,
 	ThirstDecayRate = 0.2,
 	StaminaRegenRate = 2,
-	
-	-- Paramètres nocturnes
-	NightTerrورMultiplier = 3,
-	NightStartHour = 18,
-	NightEndHour = 6,
-	TerrорDecayRateNight = 0.5,
-	TerrورDecayRateDay = -0.3, -- Régénération le jour
-	
-	-- Seuils critiques
+
+	NightTerrorMultiplier = 3,
+	TerrorDecayRateNight = 0.5,
+	TerrorDecayRateDay = -0.3, -- Régénération le jour
+
 	CriticalThreshold = 20,
 	DeathThreshold = 0,
-	
-	-- Effets des stats basses
+
 	LowHungerDamageRate = 2,
 	LowThirstDamageRate = 3,
 	HighTerrorDamageRate = 1,
-	
-	-- Intervalle de mise à jour
+
 	UpdateInterval = 1,
 }
+
+-- SharedData contient l'attribut CurrentPhase écrit par GameManager.server.luau
+local SharedData = ReplicatedStorage:FindFirstChild("SharedData")
+if not SharedData then
+	SharedData = Instance.new("Folder")
+	SharedData.Name = "SharedData"
+	SharedData.Parent = ReplicatedStorage
+end
 
 -- ============================
 -- CLASSES & MODULES
@@ -58,18 +51,15 @@ PlayerData.__index = PlayerData
 
 function PlayerData.new(player: Player)
 	local self = setmetatable({}, PlayerData)
-	
 	self.Player = player
 	self.IsAlive = true
 	self.LastUpdateTime = tick()
-	
 	return self
 end
 
 function PlayerData:InitializeAttributes()
 	local player = self.Player
-	
-	-- Attributs de base
+
 	player:SetAttribute("Health", Config.InitialHealth)
 	player:SetAttribute("MaxHealth", Config.InitialHealth)
 	player:SetAttribute("MentalHealth", Config.InitialMentalHealth)
@@ -77,12 +67,16 @@ function PlayerData:InitializeAttributes()
 	player:SetAttribute("Hunger", Config.InitialHunger)
 	player:SetAttribute("Thirst", Config.InitialThirst)
 	player:SetAttribute("Terror", 0)
-	
-	-- États
-	player:SetAttribute("IsNight", false)
+
 	player:SetAttribute("IsSprinting", false)
-	player:SetAttribute("IsAlive", true)
-	
+
+	-- IsAlive est géré en priorité par RoleManager (assignation de rôles / vote).
+	-- On ne l'initialise ici que s'il n'a jamais été défini, pour ne pas
+	-- écraser un état de "mort" déjà posé par RoleManager/VotingSystem.
+	if player:GetAttribute("IsAlive") == nil then
+		player:SetAttribute("IsAlive", true)
+	end
+
 	print(`[PlayerManager] Attributs initialisés pour {player.Name}`)
 end
 
@@ -99,68 +93,59 @@ function PlayerData:ModifyAttribute(attributeName: string, delta: number)
 	self:SetAttribute(attributeName, current + delta)
 end
 
+-- Nuit détectée via la phase de jeu officielle (GameManager), pas via
+-- Lighting.ClockTime qui n'est pas garanti d'être synchronisé.
 function PlayerData:IsNightTime(): boolean
-	local clockTime = Lighting.ClockTime
-	return clockTime >= Config.NightStartHour or clockTime < Config.NightEndHour
+	return SharedData:GetAttribute("CurrentPhase") == "NIGHT_PHASE"
 end
 
 function PlayerData:UpdateSurvivalStats(deltaTime: number)
 	if not self.IsAlive then return end
-	
-	-- Mise à jour de la faim
+
 	self:ModifyAttribute("Hunger", -Config.HungerDecayRate * deltaTime)
-	
-	-- Mise à jour de la soif
 	self:ModifyAttribute("Thirst", -Config.ThirstDecayRate * deltaTime)
-	
-	-- Régénération de l'endurance (si pas en sprint)
+
 	if not self:GetAttribute("IsSprinting") then
 		self:ModifyAttribute("Stamina", Config.StaminaRegenRate * deltaTime)
 	end
-	
-	-- Gestion de la terreur nocturne
+
 	local isNight = self:IsNightTime()
-	self.Player:SetAttribute("IsNight", isNight)
-	
+
 	if isNight then
-		local terrorRate = Config.TerrورDecayRateNight * deltaTime
+		local terrorRate = Config.TerrorDecayRateNight * deltaTime
 		self:ModifyAttribute("Terror", terrorRate)
 	else
-		local terrorRecovery = Config.TerrورDecayRateDay * deltaTime
+		local terrorRecovery = Config.TerrorDecayRateDay * deltaTime
 		self:ModifyAttribute("Terror", terrorRecovery)
 	end
 end
 
 function PlayerData:ApplyCriticalEffects(deltaTime: number)
 	if not self.IsAlive then return end
-	
+
 	local health = self:GetAttribute("Health")
 	local hunger = self:GetAttribute("Hunger")
 	local thirst = self:GetAttribute("Thirst")
 	local terror = self:GetAttribute("Terror")
-	
-	-- Dégâts dus à la faim
+
 	if hunger <= Config.CriticalThreshold then
 		local damage = Config.LowHungerDamageRate * deltaTime
 		self:ModifyAttribute("Health", -damage)
 		self:UpdateMentalHealth(-damage * 0.5)
 	end
-	
-	-- Dégâts dus à la soif
+
 	if thirst <= Config.CriticalThreshold then
 		local damage = Config.LowThirstDamageRate * deltaTime
 		self:ModifyAttribute("Health", -damage)
 		self:UpdateMentalHealth(-damage * 0.3)
 	end
-	
-	-- Dégâts dus à la terreur élevée
+
 	if terror >= 80 then
 		local damage = Config.HighTerrorDamageRate * deltaTime
 		self:UpdateMentalHealth(-damage * 2)
 		self:ModifyAttribute("Health", -damage * 0.5)
 	end
-	
-	-- Vérification de la mort
+
 	if health <= Config.DeathThreshold then
 		self:HandleDeath()
 	end
@@ -169,8 +154,7 @@ end
 function PlayerData:UpdateMentalHealth(delta: number)
 	local current = self:GetAttribute("MentalHealth")
 	self:SetAttribute("MentalHealth", math.clamp(current + delta, 0, 100))
-	
-	-- Effets de la santé mentale basse
+
 	if current <= Config.CriticalThreshold then
 		self:ApplyMentalHealthEffects()
 	end
@@ -179,22 +163,21 @@ end
 function PlayerData:ApplyMentalHealthEffects()
 	local character = self.Player.Character
 	if not character then return end
-	
+
 	local humanoid = character:FindFirstChild("Humanoid")
 	if humanoid then
-		-- Réduire la vitesse de marche
 		humanoid.WalkSpeed = math.max(10, 16 * (self:GetAttribute("MentalHealth") / 100))
 	end
 end
 
 function PlayerData:HandleDeath()
 	if not self.IsAlive then return end
-	
+
 	self.IsAlive = false
 	self.Player:SetAttribute("IsAlive", false)
-	
+
 	print(`[PlayerManager] {self.Player.Name} est mort!`)
-	
+
 	local character = self.Player.Character
 	if character then
 		local humanoid = character:FindFirstChild("Humanoid")
@@ -208,7 +191,7 @@ function PlayerData:Update()
 	local currentTime = tick()
 	local deltaTime = currentTime - self.LastUpdateTime
 	self.LastUpdateTime = currentTime
-	
+
 	self:UpdateSurvivalStats(deltaTime)
 	self:ApplyCriticalEffects(deltaTime)
 	self:ApplyMentalHealthEffects()
@@ -223,18 +206,16 @@ PlayerManager.ActivePlayers = {}
 
 function PlayerManager:OnPlayerAdded(player: Player)
 	print(`[PlayerManager] Joueur connecté: {player.Name}`)
-	
-	-- Créer les données du joueur
+
 	local playerData = PlayerData.new(player)
 	playerData:InitializeAttributes()
-	
+
 	self.ActivePlayers[player.UserId] = playerData
-	
-	-- Attendre que le personnage soit chargé
+
 	player.CharacterAdded:Connect(function(character)
 		self:OnCharacterAdded(player, character)
 	end)
-	
+
 	if player.Character then
 		self:OnCharacterAdded(player, player.Character)
 	end
@@ -242,17 +223,21 @@ end
 
 function PlayerManager:OnCharacterAdded(player: Player, character: Model)
 	print(`[PlayerManager] Personnage chargé pour {player.Name}`)
-	
+
 	local playerData = self.ActivePlayers[player.UserId]
 	if not playerData then return end
-	
-	-- Réinitialiser l'état vivant
-	playerData.IsAlive = true
-	player:SetAttribute("IsAlive", true)
-	
-	-- Synchroniser la santé avec l'attribut
+
+	-- Ne réinitialise IsAlive à true que si le joueur n'a pas déjà été
+	-- éliminé de la partie en cours (vote, sabotage, etc. géré par RoleManager).
+	if player:GetAttribute("IsAlive") ~= false then
+		playerData.IsAlive = true
+		player:SetAttribute("IsAlive", true)
+	else
+		playerData.IsAlive = false
+	end
+
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
-	
+
 	humanoid.HealthChanged:Connect(function(health)
 		if health <= 0 then
 			playerData:HandleDeath()
@@ -275,35 +260,28 @@ end
 
 function PlayerManager:Initialize()
 	print("[PlayerManager] Initialisation du système de survie...")
-	
-	-- Connexion des événements
+
 	Players.PlayerAdded:Connect(function(player)
 		self:OnPlayerAdded(player)
 	end)
-	
+
 	Players.PlayerRemoving:Connect(function(player)
 		self:OnPlayerRemoving(player)
 	end)
-	
-	-- Gérer les joueurs déjà connectés
+
 	for _, player in ipairs(Players:GetPlayers()) do
 		self:OnPlayerAdded(player)
 	end
-	
-	-- Boucle de mise à jour
+
 	task.spawn(function()
 		while true do
 			self:UpdateAllPlayers()
 			task.wait(Config.UpdateInterval)
 		end
 	end)
-	
+
 	print("[PlayerManager] Système de survie opérationnel!")
 end
-
--- ============================
--- API PUBLIQUE
--- ============================
 
 function PlayerManager:GetPlayerData(player: Player)
 	return self.ActivePlayers[player.UserId]
@@ -331,32 +309,4 @@ function PlayerManager:ReduceTerror(player: Player, amount: number)
 	end
 end
 
--- ============================
--- DÉMARRAGE
--- ============================
-
 PlayerManager:Initialize()
-
-return PlayerManager
-
-
-## 🎮 Fonctionnalités implémentées
-
-### ✅ **Système de Survie Complet**
-- **Faim & Soif** : Décroissance automatique
-- **Endurance** : Régénération automatique
-- **Santé Mentale** : Affectée par les stats critiques
-- **Terreur Nocturne** : Augmente la nuit, diminue le jour
-
-### ✅ **Effets Critiques**
-- Dégâts si faim/soif < 20
-- Terreur élevée affecte santé mentale et physique
-- Vitesse réduite selon santé mentale
-
-### ✅ **Code Modulaire & Robuste**
-- Architecture orientée objet
-- Type checking avec `--!strict`
-- Gestion propre de la mort
-- API publique pour interactions externes
-
-**Prêt à l'emploi sur Roblox Studio!** 🚀
