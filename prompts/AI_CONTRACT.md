@@ -22,3 +22,6 @@ Le projet utilise plusieurs scripts autonomes (`.server.luau`) qui démarrent en
 ## 5. Syntaxe et Formatage du Code (Zéro Markdown)
 * **Zéro Markdown dans les fichiers source :** N'insère JAMAIS de balises Markdown (comme ` ```luau ` ou ` ``` `) à l'intérieur des fichiers `.luau`. Le code doit être brut et prêt à être compilé.
 * **Commentaires Luau stricts :** Les commentaires s'écrivent exclusivement avec `--` ou `--[[ ]]`. N'utilise JAMAIS le symbole `#` pour faire un commentaire ou un titre dans un fichier de code, cela provoque des erreurs fatales de parsing.
+
+## 6. Commit /Push
+* **Tu n'as pas le droit d'exécuter git commit ou git push directement à la main. Tu dois obligatoirement lancer ./agent_commit.sh pour que les garde-fous et les tests valident ton travail avant publication.
