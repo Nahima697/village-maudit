@@ -412,4 +412,3 @@ end
 
 WorldBuilder.Generate()
 
-return WorldBuilder
