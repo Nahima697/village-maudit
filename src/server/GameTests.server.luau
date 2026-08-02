@@ -69,25 +69,25 @@ end
 -- TEST 2 : Cycle jour/nuit (SharedData.CurrentPhase)
 local function testCycleJourNuit()
 	local success, result = pcall(function()
-		-- Attendre explicitement SharedData avec timeout sécurisé
+		-- Attendre SharedData avec timeout sécurisé
 		local sharedData = ReplicatedStorage:FindFirstChild("SharedData")
 		
 		if not sharedData then
-			-- Attendre sa création
 			local waitSuccess = pcall(function()
 				sharedData = ReplicatedStorage:WaitForChild("SharedData", 10)
 			end)
 			
 			if not waitSuccess or not sharedData then
-				return nil, "SharedData n'existe pas après 10 secondes d'attente (GameManager pas encore démarré)"
+				return nil, "SharedData n'existe pas après 10 secondes (GameManager pas encore démarré)"
 			end
 		end
 
-		-- Attendre un peu que GameManager initialise la phase
+		-- Attendre que GameManager initialise les attributs
 		task.wait(2)
 
 		local currentPhase = sharedData:GetAttribute("CurrentPhase")
 
+		-- Vérifier que CurrentPhase existe
 		if currentPhase == nil or currentPhase == "" then
 			return nil, "CurrentPhase non encore initialisé (GameManager en cours de démarrage)"
 		end
@@ -97,14 +97,14 @@ local function testCycleJourNuit()
 			["DAY_PHASE"] = true,
 			["VOTE_PHASE"] = true,
 			["NIGHT_PHASE"] = true,
-			["WAITING"] = true, -- Phase d'attente avant le début
+			["WAITING"] = true,
 		}
 
 		if not validPhases[currentPhase] then
 			return false, "Phase invalide : " .. tostring(currentPhase)
 		end
 
-		-- Vérifier aussi que le TimeRemaining existe
+		-- Vérifier TimeRemaining (doit être un nombre s'il existe)
 		local timeRemaining = sharedData:GetAttribute("TimeRemaining")
 		if timeRemaining ~= nil and type(timeRemaining) ~= "number" then
 			return false, "TimeRemaining existe mais n'est pas un nombre (valeur : " .. tostring(timeRemaining) .. ")"
@@ -133,42 +133,39 @@ local function testMondeGenere()
 			return false, "Terrain n'existe pas"
 		end
 
-		-- Vérifier les arbres
-		local trees = workspace:FindFirstChild("Trees")
-		if not trees then
-			return false, "Dossier Trees n'existe pas"
-		end
-
-		local treeCount = #trees:GetChildren()
-		if treeCount < 1 then
-			return nil, "Dossier Trees existe mais est vide (génération en cours ?)"
-		end
-
-		-- Vérifier le village
+		-- Vérifier les dossiers principaux créés par WorldBuilder
 		local village = workspace:FindFirstChild("Village")
 		if not village then
 			return false, "Dossier Village n'existe pas"
 		end
 
-		-- Vérifier les rochers
-		local rocks = workspace:FindFirstChild("Rocks")
-		if rocks and #rocks:GetChildren() < 1 then
-			-- Pas critique, mais bon à signaler
-			return nil, "Dossier Rocks existe mais est vide"
+		local trees = workspace:FindFirstChild("Trees")
+		if not trees then
+			return false, "Dossier Trees n'existe pas"
 		end
 
-		-- Vérifier les points de spawn des monstres
+		local rocks = workspace:FindFirstChild("Rocks")
+		if not rocks then
+			return nil, "Dossier Rocks n'existe pas (optionnel mais attendu)"
+		end
+
 		local monsterSpawns = workspace:FindFirstChild("MonsterSpawns")
 		if not monsterSpawns then
-			return nil, "Dossier MonsterSpawns n'existe pas encore (génération en cours ?)"
+			return nil, "Dossier MonsterSpawns n'existe pas (génération en cours ?)"
+		end
+
+		-- Vérifier que les dossiers contiennent au moins quelques éléments
+		local treeCount = #trees:GetChildren()
+		if treeCount < 1 then
+			return nil, "Dossier Trees existe mais est vide (génération en cours ?)"
 		end
 
 		local spawnCount = #monsterSpawns:GetChildren()
 		if spawnCount < 1 then
-			return nil, "Dossier MonsterSpawns existe mais est vide"
+			return nil, "Dossier MonsterSpawns existe mais est vide (génération en cours ?)"
 		end
 
-		-- Vérifier les fortifications (optionnel)
+		-- Vérifier les fortifications et portes (optionnel mais important)
 		local fortifications = village:FindFirstChild("Fortifications")
 		if fortifications then
 			local doors = { "Door_North", "Door_East", "Door_West", "Door_South" }
@@ -179,24 +176,25 @@ local function testMondeGenere()
 				if door then
 					doorCount = doorCount + 1
 					
+					-- Vérifier les attributs de santé si la porte a un DoorPart
 					local doorPart = door:FindFirstChild("DoorPart")
 					if doorPart then
 						local health = doorPart:GetAttribute("Health")
 						local maxHealth = doorPart:GetAttribute("MaxHealth")
 						
 						if health ~= nil and (type(health) ~= "number" or health <= 0) then
-							return false, doorName .. " a un attribut Health invalide (trouvé: " .. tostring(health) .. ")"
+							return false, doorName .. " a Health invalide (trouvé: " .. tostring(health) .. ")"
 						end
 						
 						if maxHealth ~= nil and (type(maxHealth) ~= "number" or maxHealth <= 0) then
-							return false, doorName .. " a un attribut MaxHealth invalide"
+							return false, doorName .. " a MaxHealth invalide"
 						end
 					end
 				end
 			end
 			
 			if doorCount == 0 then
-				return nil, "Fortifications existent mais aucune porte trouvée (construction en cours ?)"
+				return nil, "Fortifications existent mais aucune porte trouvée"
 			end
 		end
 
@@ -333,5 +331,3 @@ print("[TEST] ========== FIN DES TESTS ==========")
 if failCount > 0 then
 	warn("[TEST] ⚠️ Attention : " .. failCount .. " test(s) ont échoué !")
 end
-
--- Script serveur : pas de return (règle absolue respectée)
