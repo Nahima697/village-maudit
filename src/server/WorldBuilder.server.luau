@@ -3,10 +3,11 @@
     Génère le monde en utilisant les prefabs de ReplicatedStorage
     et tague automatiquement les arbres et rochers pour la récolte
     
-    ADAPTATION : Fonctionne avec des MeshParts/BaseParts directs (dossier plat)
-    CORRECTION : Validation des tailles et positionnement explicite
-    FIX : Instanciation profonde des bâtiments avec MeshParts visibles
-    VERSION 2 : Correction du positionnement relatif et espacement 3D des composants
+    VERSION 3 : Détection élargie des prefabs architecturaux + garantie visuelle maximale
+    - Patterns de détection étendus pour murs/structures
+    - Fallback automatique sur prefabs disponibles
+    - Validation renforcée de la visibilité
+    - Dimensionnement forcé des composants
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -25,62 +26,66 @@ local CONFIG = {
 	MONSTER_SPAWN_COUNT = 6,
 	DECORATION_DENSITY = 0.3,
 	
-	-- NOUVELLES CONSTANTES POUR TAILLES PAR DÉFAUT
+	-- Tailles par défaut
 	DEFAULT_TREE_SIZE = Vector3.new(4, 8, 4),
 	DEFAULT_ROCK_SIZE = Vector3.new(3, 3, 3),
 	DEFAULT_BUILDING_PART_SIZE = Vector3.new(4, 4, 4),
 	DEFAULT_DECORATION_SIZE = Vector3.new(2, 2, 2),
-	MIN_VALID_SIZE = 0.1,  -- Taille minimum pour considérer un objet comme valide
+	MIN_VALID_SIZE = 0.1,
 	
-	-- NOUVELLES CONSTANTES POUR L'ARCHITECTURE DES BÂTIMENTS
-	BUILDING_WIDTH = 16,  -- Largeur du bâtiment
-	BUILDING_DEPTH = 16,  -- Profondeur du bâtiment
-	BUILDING_HEIGHT = 8,  -- Hauteur des murs
-	FLOOR_HEIGHT = 0.5,   -- Épaisseur du sol
-	WALL_THICKNESS = 0.5, -- Épaisseur des murs
-	ROOF_HEIGHT = 3,      -- Hauteur du toit au-dessus des murs
-	DOOR_WIDTH = 3,       -- Largeur de la porte
-	WINDOW_SIZE = 2,      -- Taille des fenêtres
+	-- Architecture des bâtiments
+	BUILDING_WIDTH = 16,
+	BUILDING_DEPTH = 16,
+	BUILDING_HEIGHT = 8,
+	FLOOR_HEIGHT = 0.5,
+	WALL_THICKNESS = 0.5,
+	ROOF_HEIGHT = 3,
+	DOOR_WIDTH = 3,
+	WINDOW_SIZE = 2,
 }
 
 -- ========================================
--- SYSTÈME DE CATÉGORISATION DES PREFABS
+-- SYSTÈME DE CATÉGORISATION ÉLARGI
 -- ========================================
 
--- Patterns de détection pour catégoriser les prefabs
 local PREFAB_PATTERNS = {
 	-- Nature
-	Trees = {"tree", "oak", "pine", "birch", "sapin", "arbre"},
-	Bushes = {"bush", "buisson", "shrub"},
-	Grass = {"grass", "herbe", "weed"},
+	Trees = {"tree", "oak", "pine", "birch", "sapin", "arbre", "trunk"},
+	Bushes = {"bush", "buisson", "shrub", "hedge"},
+	Grass = {"grass", "herbe", "weed", "plant"},
 	Rocks = {"rock", "stone", "boulder", "rocher", "pierre"},
 	
-	-- Bâtiments - Structure
-	Walls = {"wall", "mur"},
-	Roofs = {"roof", "toit"},
-	Floors = {"floor", "sol", "ground"},
-	Pillars = {"pillar", "column", "colonne", "poteau"},
+	-- Bâtiments - Structure (DÉTECTION ÉLARGIE)
+	Walls = {
+		"wall", "mur", 
+		"house", "building", "structure", 
+		"pillar", "column", "colonne", "poteau",
+		"corner", "angle", "side", "facade",
+		"panel", "panneau", "plank", "planche"
+	},
+	Roofs = {"roof", "toit", "ceiling", "plafond", "top", "cover"},
+	Floors = {"floor", "sol", "ground", "base", "platform", "plateforme"},
+	Pillars = {"pillar", "column", "colonne", "poteau", "post", "support"},
 	
 	-- Bâtiments - Ouvertures
-	Doors = {"door", "porte"},
-	Windows = {"window", "fenetre", "fenêtre"},
-	Gates = {"gate", "portail", "entrance"},
+	Doors = {"door", "porte", "entry", "entree", "entrance"},
+	Windows = {"window", "fenetre", "fenêtre", "opening"},
+	Gates = {"gate", "portail", "entrance", "arch", "arche"},
 	
 	-- Décoration
-	Barrels = {"barrel", "tonneau", "crate", "caisse"},
-	Benches = {"bench", "banc", "seat"},
-	Lamps = {"lamp", "lampe", "lantern", "lanterne", "light"},
-	Fences = {"fence", "barriere", "barrière"},
+	Barrels = {"barrel", "tonneau", "crate", "caisse", "box", "container"},
+	Benches = {"bench", "banc", "seat", "chair", "chaise"},
+	Lamps = {"lamp", "lampe", "lantern", "lanterne", "light", "lumiere", "torch"},
+	Fences = {"fence", "barriere", "barrière", "railing", "guard"},
 	
 	-- Autres
-	Signs = {"sign", "panneau", "board"}
+	Signs = {"sign", "panneau", "board", "plaque"}
 }
 
--- Cache des prefabs catégorisés
 local PrefabCache = {}
 
 -- ========================================
--- UTILITAIRES PREFABS - SYSTÈME PLAT
+-- UTILITAIRES PREFABS
 -- ========================================
 
 local function getPrefabsFolder()
@@ -111,9 +116,12 @@ local function categorizePrefabs()
 		PrefabCache[category] = {}
 	end
 	PrefabCache.Uncategorized = {}
+	PrefabCache.AllPrefabs = {}  -- Nouvelle catégorie : TOUS les prefabs
 	
-	-- Parcours PLAT de tous les prefabs
+	-- Parcours de tous les prefabs
 	for _, prefab in ipairs(prefabsFolder:GetChildren()) do
+		table.insert(PrefabCache.AllPrefabs, prefab)
+		
 		local categorized = false
 		
 		-- Tenter de catégoriser le prefab
@@ -121,7 +129,7 @@ local function categorizePrefabs()
 			if matchesPattern(prefab.Name, patterns) then
 				table.insert(PrefabCache[category], prefab)
 				categorized = true
-				break
+				-- Ne pas break : un prefab peut appartenir à plusieurs catégories
 			end
 		end
 		
@@ -133,7 +141,7 @@ local function categorizePrefabs()
 	
 	-- Rapport de catégorisation
 	print("========================================")
-	print("WorldBuilder: CATÉGORISATION DES PREFABS")
+	print("WorldBuilder: CATÉGORISATION DES PREFABS (ÉLARGIE)")
 	print("========================================")
 	for category, prefabs in pairs(PrefabCache) do
 		if #prefabs > 0 then
@@ -157,17 +165,42 @@ local function getRandomPrefabFromCategory(category)
 	return prefabs[math.random(1, #prefabs)]
 end
 
+-- NOUVEAU : Fallback intelligent sur prefabs disponibles
+local function getRandomPrefabWithFallback(preferredCategory, fallbackCategories)
+	-- Essayer la catégorie préférée d'abord
+	local prefab = getRandomPrefabFromCategory(preferredCategory)
+	if prefab then
+		return prefab, preferredCategory
+	end
+	
+	-- Essayer les catégories de fallback
+	for _, fallbackCategory in ipairs(fallbackCategories) do
+		prefab = getRandomPrefabFromCategory(fallbackCategory)
+		if prefab then
+			warn(string.format("WorldBuilder: Utilisation de %s comme fallback pour %s", fallbackCategory, preferredCategory))
+			return prefab, fallbackCategory
+		end
+	end
+	
+	-- Dernier recours : prendre n'importe quel prefab
+	if #PrefabCache.AllPrefabs > 0 then
+		prefab = PrefabCache.AllPrefabs[math.random(1, #PrefabCache.AllPrefabs)]
+		warn(string.format("WorldBuilder: Utilisation de prefab aléatoire '%s' comme fallback pour %s", prefab.Name, preferredCategory))
+		return prefab, "Random"
+	end
+	
+	return nil, nil
+end
+
 -- ========================================
--- VALIDATION ET CORRECTION DE TAILLE
+-- VALIDATION ET CORRECTION
 -- ========================================
 
 local function isValidSize(size)
-	-- Vérifie si la taille est valide (non nulle, non NaN)
 	if not size then return false end
 	if size.X < CONFIG.MIN_VALID_SIZE or size.Y < CONFIG.MIN_VALID_SIZE or size.Z < CONFIG.MIN_VALID_SIZE then
 		return false
 	end
-	-- Vérifie les valeurs NaN
 	if size.X ~= size.X or size.Y ~= size.Y or size.Z ~= size.Z then
 		return false
 	end
@@ -175,7 +208,6 @@ local function isValidSize(size)
 end
 
 local function getDefaultSizeForCategory(category)
-	-- Retourne une taille par défaut selon la catégorie
 	if category == "Trees" then
 		return CONFIG.DEFAULT_TREE_SIZE
 	elseif category == "Rocks" then
@@ -188,7 +220,6 @@ local function getDefaultSizeForCategory(category)
 end
 
 local function validateAndFixSize(part, category)
-	-- Valide et corrige la taille d'une BasePart si nécessaire
 	if not part:IsA("BasePart") then return end
 	
 	local currentSize = part.Size
@@ -202,67 +233,62 @@ local function validateAndFixSize(part, category)
 end
 
 -- ========================================
--- CLONAGE ET CONFIGURATION DES PREFABS AMÉLIORÉ
+-- CLONAGE AMÉLIORÉ AVEC GARANTIE VISUELLE
 -- ========================================
+
+local function forceVisibility(part)
+	-- Force TOUS les paramètres de visibilité
+	if not part:IsA("BasePart") then return end
+	
+	part.Transparency = 0
+	part.CanCollide = true
+	part.Anchored = true
+	part.CastShadow = true
+	
+	-- Forcer un matériau visible
+	if part.Material == Enum.Material.Plastic then
+		part.Material = Enum.Material.SmoothPlastic
+	end
+	
+	-- Forcer une couleur visible si trop transparente
+	if part.Color == Color3.new(1, 1, 1) then
+		part.Color = Color3.fromRGB(200, 200, 200)
+	end
+	
+	-- Pour les MeshParts, vérifier le MeshId
+	if part:IsA("MeshPart") then
+		if part.MeshId == "" or part.MeshId == "rbxasset://fonts/leftarm.mesh" then
+			warn(string.format("WorldBuilder: MeshPart %s a un MeshId invalide/vide", part.Name))
+		end
+	end
+end
 
 local function clonePrefabDeep(prefab, category)
 	if not prefab then return nil end
 	
 	local clone = prefab:Clone()
 	
-	-- GESTION DIRECTE DES MESHPARTS / BASEPARTS
 	if clone:IsA("BasePart") then
-		-- VALIDATION ET CORRECTION DE LA TAILLE
 		validateAndFixSize(clone, category or "Uncategorized")
+		forceVisibility(clone)
 		
-		-- Configuration des propriétés de rendu CRITIQUES
-		clone.Anchored = true
-		clone.CanCollide = true
-		clone.Transparency = 0  -- FORCE la visibilité
-		
-		-- Forcer les propriétés de surface pour le rendu
-		if clone:IsA("MeshPart") then
-			-- S'assurer que le MeshId existe
-			if clone.MeshId == "" or clone.MeshId == "rbxasset://fonts/leftarm.mesh" then
-				warn(string.format("WorldBuilder: MeshPart %s a un MeshId invalide", clone.Name))
-			end
-			
-			-- Forcer le matériau pour meilleure visibilité
-			if clone.Material == Enum.Material.Plastic then
-				clone.Material = Enum.Material.SmoothPlastic
-			end
-		end
-		
-		-- Vérification finale de visibilité
-		print(string.format("✓ MeshPart cloné: %s | Size: %s | Transparency: %s | Material: %s", 
+		print(string.format("✓ BasePart cloné: %s | Size: %s | Material: %s", 
 			clone.Name, 
 			tostring(clone.Size), 
-			tostring(clone.Transparency),
 			tostring(clone.Material)))
 		
 	elseif clone:IsA("Model") then
-		-- Ancrer et valider toutes les parts du modèle
 		local partCount = 0
 		for _, descendant in ipairs(clone:GetDescendants()) do
 			if descendant:IsA("BasePart") then
 				validateAndFixSize(descendant, category or "Uncategorized")
-				descendant.Anchored = true
-				descendant.Transparency = 0  -- FORCE la visibilité
-				descendant.CanCollide = true
-				
-				if descendant:IsA("MeshPart") then
-					if descendant.Material == Enum.Material.Plastic then
-						descendant.Material = Enum.Material.SmoothPlastic
-					end
-				end
-				
+				forceVisibility(descendant)
 				partCount = partCount + 1
 			end
 		end
 		
 		print(string.format("✓ Model cloné: %s avec %d BaseParts", clone.Name, partCount))
 		
-		-- Définir la PrimaryPart si absente
 		if not clone.PrimaryPart then
 			local primaryPart = clone:FindFirstChildWhichIsA("BasePart")
 			if primaryPart then
@@ -288,9 +314,7 @@ local function anchorModel(model)
 end
 
 local function setModelCFrame(model, cframe)
-	-- GESTION SIMPLIFIÉE POUR MESHPARTS AVEC VALIDATION
 	if model:IsA("BasePart") then
-		-- Pour les MeshParts et autres BaseParts directs
 		model.CFrame = cframe
 	elseif model:IsA("Model") then
 		if model.PrimaryPart then
@@ -313,7 +337,6 @@ end
 
 local function tagModelAsCollectable(model, resourceType)
 	if model:IsA("BasePart") then
-		-- Pour les MeshParts directs
 		CollectionService:AddTag(model, "Collectable")
 		model:SetAttribute("ResourceType", resourceType or "Wood")
 	elseif model:IsA("Model") then
@@ -366,7 +389,7 @@ local function createBasePlate()
 end
 
 -- ========================================
--- GÉNÉRATION FORÊT (PREFABS) - AMÉLIORÉ
+-- GÉNÉRATION FORÊT
 -- ========================================
 
 local function generateForest()
@@ -394,7 +417,6 @@ local function generateForest()
 		local x = math.cos(angle) * distance
 		local z = math.sin(angle) * distance
 		
-		-- Placement d'un arbre
 		local treePrefab = getRandomPrefabFromCategory("Trees")
 		if treePrefab then
 			local tree = clonePrefabDeep(treePrefab, "Trees")
@@ -402,17 +424,14 @@ local function generateForest()
 			if tree then
 				tree.Name = "Tree_" .. i
 				
-				-- Calculer la hauteur pour placer correctement
 				local treeSize = getModelSize(tree)
 				local yPosition = 0.5 + (treeSize.Y / 2)
 				local position = Vector3.new(x, yPosition, z)
 				
-				-- Configuration des propriétés AVANT parenting
 				anchorModel(tree)
 				setModelPosition(tree, position)
 				tagModelAsCollectable(tree, "Wood")
 				
-				-- PARENTING EN DERNIER
 				tree.Parent = treesFolder
 				
 				successCount = successCount + 1
@@ -421,7 +440,6 @@ local function generateForest()
 			end
 		end
 		
-		-- Décoration : buissons
 		if math.random() < CONFIG.DECORATION_DENSITY then
 			local bushPrefab = getRandomPrefabFromCategory("Bushes")
 			if bushPrefab then
@@ -443,7 +461,6 @@ local function generateForest()
 			end
 		end
 		
-		-- Décoration : herbes
 		if math.random() < CONFIG.DECORATION_DENSITY * 0.5 then
 			local grassPrefab = getRandomPrefabFromCategory("Grass")
 			if grassPrefab then
@@ -471,7 +488,7 @@ local function generateForest()
 end
 
 -- ========================================
--- GÉNÉRATION ROCHERS (PREFABS) - AMÉLIORÉ
+-- GÉNÉRATION ROCHERS
 -- ========================================
 
 local function generateRocks()
@@ -512,7 +529,6 @@ local function generateRocks()
 				setModelCFrame(rock, CFrame.new(x, yPosition, z) * CFrame.Angles(0, randomRotation, 0))
 				tagModelAsCollectable(rock, "Stone")
 				
-				-- PARENTING EN DERNIER
 				rock.Parent = rocksFolder
 				
 				successCount = successCount + 1
@@ -527,18 +543,29 @@ local function generateRocks()
 end
 
 -- ========================================
--- GÉNÉRATION VILLAGE (PREFABS) - ARCHITECTURE 3D CORRIGÉE
+-- GÉNÉRATION VILLAGE AVEC FALLBACKS
 -- ========================================
 
-local function createBuildingComponent(prefabCategory, componentName, relativeCFrame, parent, buildingIndex)
-	-- Crée un composant de bâtiment avec un positionnement relatif précis
-	local prefab = getRandomPrefabFromCategory(prefabCategory)
+local function createBuildingComponent(prefabCategory, componentName, relativeCFrame, parent, buildingIndex, forcedSize)
+	-- Utilisation du système de fallback
+	local fallbacks = {
+		Walls = {"Pillars", "Floors", "Uncategorized", "AllPrefabs"},
+		Roofs = {"Floors", "Walls", "Uncategorized", "AllPrefabs"},
+		Floors = {"Roofs", "Walls", "Uncategorized", "AllPrefabs"},
+		Pillars = {"Walls", "Uncategorized", "AllPrefabs"},
+		Doors = {"Windows", "Walls", "Uncategorized", "AllPrefabs"},
+		Windows = {"Doors", "Walls", "Uncategorized", "AllPrefabs"},
+		Gates = {"Doors", "Pillars", "Uncategorized", "AllPrefabs"}
+	}
+	
+	local prefab, actualCategory = getRandomPrefabWithFallback(prefabCategory, fallbacks[prefabCategory] or {"AllPrefabs"})
+	
 	if not prefab then
-		warn(string.format("  ✗ Aucun prefab %s trouvé", prefabCategory))
+		warn(string.format("  ✗ Aucun prefab disponible pour %s (même avec fallback)", prefabCategory))
 		return nil
 	end
 	
-	local component = clonePrefabDeep(prefab, prefabCategory)
+	local component = clonePrefabDeep(prefab, actualCategory)
 	if not component then
 		warn(string.format("  ✗ Échec clonage %s", componentName))
 		return nil
@@ -549,20 +576,26 @@ local function createBuildingComponent(prefabCategory, componentName, relativeCF
 	-- Configuration des propriétés AVANT positionnement
 	anchorModel(component)
 	
+	-- FORCER la taille si spécifiée
+	if forcedSize and component:IsA("BasePart") then
+		component.Size = forcedSize
+	elseif forcedSize and component:IsA("Model") then
+		-- Pour les modèles, redimensionner la PrimaryPart
+		if component.PrimaryPart then
+			component.PrimaryPart.Size = forcedSize
+		end
+	end
+	
 	-- Appliquer la CFrame relative
 	setModelCFrame(component, relativeCFrame)
 	
-	-- Forcer la visibilité et les collisions
+	-- DOUBLE VÉRIFICATION de la visibilité
 	if component:IsA("BasePart") then
-		component.Transparency = 0
-		component.CanCollide = true
-		component.Anchored = true
+		forceVisibility(component)
 	elseif component:IsA("Model") then
 		for _, part in ipairs(component:GetDescendants()) do
 			if part:IsA("BasePart") then
-				part.Transparency = 0
-				part.CanCollide = true
-				part.Anchored = true
+				forceVisibility(part)
 			end
 		end
 	end
@@ -570,136 +603,93 @@ local function createBuildingComponent(prefabCategory, componentName, relativeCF
 	-- Parenting
 	component.Parent = parent
 	
-	print(string.format("  ✓ %s ajouté à position relative: %s", componentName, tostring(relativeCFrame.Position)))
+	print(string.format("  ✓ %s ajouté (catégorie: %s) | Position: %s | Size: %s", 
+		componentName, 
+		actualCategory,
+		tostring(relativeCFrame.Position),
+		forcedSize and tostring(forcedSize) or "Auto"))
 	
 	return component
 end
 
 local function createBuilding(position, angle, buildingIndex)
-	print(string.format("--- Création Building_%d ---", buildingIndex))
+	print(string.format("========== Création Building_%d ==========", buildingIndex))
 	
 	local building = Instance.new("Model")
 	building.Name = "Building_" .. buildingIndex
 	
-	-- CFrame de base du bâtiment (origine au centre, au sol)
 	local baseCFrame = CFrame.new(position) * CFrame.Angles(0, angle, 0)
 	
 	local partsCreated = 0
-	local componentsList = {}
 	
 	-- ====== SOL ======
-	-- Positionné au ras du sol
 	local floorY = CONFIG.FLOOR_HEIGHT / 2
 	local floorCFrame = baseCFrame * CFrame.new(0, floorY, 0)
+	local floorSize = Vector3.new(CONFIG.BUILDING_WIDTH, CONFIG.FLOOR_HEIGHT, CONFIG.BUILDING_DEPTH)
 	
-	local floor = createBuildingComponent("Floors", "Floor", floorCFrame, building, buildingIndex)
+	local floor = createBuildingComponent("Floors", "Floor", floorCFrame, building, buildingIndex, floorSize)
 	if floor then
 		partsCreated = partsCreated + 1
-		table.insert(componentsList, floor)
-		
-		-- Forcer la taille du sol selon les dimensions du bâtiment
-		if floor:IsA("BasePart") then
-			floor.Size = Vector3.new(CONFIG.BUILDING_WIDTH, CONFIG.FLOOR_HEIGHT, CONFIG.BUILDING_DEPTH)
-		end
 	end
 	
 	-- ====== MURS (4 côtés) ======
-	-- Hauteur du centre des murs
 	local wallCenterY = CONFIG.FLOOR_HEIGHT + (CONFIG.BUILDING_HEIGHT / 2)
 	
-	-- Mur Nord (devant, face -Z)
+	-- Mur Nord
 	local wallNorthCFrame = baseCFrame * CFrame.new(0, wallCenterY, -CONFIG.BUILDING_DEPTH / 2)
-	local wallNorth = createBuildingComponent("Walls", "Wall_North", wallNorthCFrame, building, buildingIndex)
-	if wallNorth then
-		partsCreated = partsCreated + 1
-		table.insert(componentsList, wallNorth)
-		if wallNorth:IsA("BasePart") then
-			wallNorth.Size = Vector3.new(CONFIG.BUILDING_WIDTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
-		end
-	end
+	local wallNorthSize = Vector3.new(CONFIG.BUILDING_WIDTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
+	local wallNorth = createBuildingComponent("Walls", "Wall_North", wallNorthCFrame, building, buildingIndex, wallNorthSize)
+	if wallNorth then partsCreated = partsCreated + 1 end
 	
-	-- Mur Sud (derrière, face +Z)
+	-- Mur Sud
 	local wallSouthCFrame = baseCFrame * CFrame.new(0, wallCenterY, CONFIG.BUILDING_DEPTH / 2)
-	local wallSouth = createBuildingComponent("Walls", "Wall_South", wallSouthCFrame, building, buildingIndex)
-	if wallSouth then
-		partsCreated = partsCreated + 1
-		table.insert(componentsList, wallSouth)
-		if wallSouth:IsA("BasePart") then
-			wallSouth.Size = Vector3.new(CONFIG.BUILDING_WIDTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
-		end
-	end
+	local wallSouthSize = Vector3.new(CONFIG.BUILDING_WIDTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
+	local wallSouth = createBuildingComponent("Walls", "Wall_South", wallSouthCFrame, building, buildingIndex, wallSouthSize)
+	if wallSouth then partsCreated = partsCreated + 1 end
 	
-	-- Mur Est (droite, face +X)
+	-- Mur Est
 	local wallEastCFrame = baseCFrame * CFrame.new(CONFIG.BUILDING_WIDTH / 2, wallCenterY, 0) * CFrame.Angles(0, math.pi / 2, 0)
-	local wallEast = createBuildingComponent("Walls", "Wall_East", wallEastCFrame, building, buildingIndex)
-	if wallEast then
-		partsCreated = partsCreated + 1
-		table.insert(componentsList, wallEast)
-		if wallEast:IsA("BasePart") then
-			wallEast.Size = Vector3.new(CONFIG.BUILDING_DEPTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
-		end
-	end
+	local wallEastSize = Vector3.new(CONFIG.BUILDING_DEPTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
+	local wallEast = createBuildingComponent("Walls", "Wall_East", wallEastCFrame, building, buildingIndex, wallEastSize)
+	if wallEast then partsCreated = partsCreated + 1 end
 	
-	-- Mur Ouest (gauche, face -X)
+	-- Mur Ouest
 	local wallWestCFrame = baseCFrame * CFrame.new(-CONFIG.BUILDING_WIDTH / 2, wallCenterY, 0) * CFrame.Angles(0, math.pi / 2, 0)
-	local wallWest = createBuildingComponent("Walls", "Wall_West", wallWestCFrame, building, buildingIndex)
-	if wallWest then
-		partsCreated = partsCreated + 1
-		table.insert(componentsList, wallWest)
-		if wallWest:IsA("BasePart") then
-			wallWest.Size = Vector3.new(CONFIG.BUILDING_DEPTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
-		end
-	end
+	local wallWestSize = Vector3.new(CONFIG.BUILDING_DEPTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
+	local wallWest = createBuildingComponent("Walls", "Wall_West", wallWestCFrame, building, buildingIndex, wallWestSize)
+	if wallWest then partsCreated = partsCreated + 1 end
 	
 	-- ====== TOIT ======
-	-- Positionné au-dessus des murs
 	local roofY = CONFIG.FLOOR_HEIGHT + CONFIG.BUILDING_HEIGHT + (CONFIG.ROOF_HEIGHT / 2)
 	local roofCFrame = baseCFrame * CFrame.new(0, roofY, 0)
+	local roofSize = Vector3.new(CONFIG.BUILDING_WIDTH + 2, CONFIG.ROOF_HEIGHT, CONFIG.BUILDING_DEPTH + 2)
 	
-	local roof = createBuildingComponent("Roofs", "Roof", roofCFrame, building, buildingIndex)
-	if roof then
-		partsCreated = partsCreated + 1
-		table.insert(componentsList, roof)
-		if roof:IsA("BasePart") then
-			roof.Size = Vector3.new(CONFIG.BUILDING_WIDTH + 2, CONFIG.ROOF_HEIGHT, CONFIG.BUILDING_DEPTH + 2)
-		end
-	end
+	local roof = createBuildingComponent("Roofs", "Roof", roofCFrame, building, buildingIndex, roofSize)
+	if roof then partsCreated = partsCreated + 1 end
 	
 	-- ====== PORTE ======
-	-- Centrée sur le mur nord (devant), au ras du sol
 	local doorY = CONFIG.FLOOR_HEIGHT + (CONFIG.DOOR_WIDTH / 2)
 	local doorCFrame = baseCFrame * CFrame.new(0, doorY, -(CONFIG.BUILDING_DEPTH / 2 + 0.6))
+	local doorSize = Vector3.new(CONFIG.DOOR_WIDTH, CONFIG.DOOR_WIDTH * 1.5, CONFIG.WALL_THICKNESS)
 	
-	local door = createBuildingComponent("Doors", "Door", doorCFrame, building, buildingIndex)
-	if door then
-		partsCreated = partsCreated + 1
-		table.insert(componentsList, door)
-		if door:IsA("BasePart") then
-			door.Size = Vector3.new(CONFIG.DOOR_WIDTH, CONFIG.DOOR_WIDTH * 1.5, CONFIG.WALL_THICKNESS)
-		end
-	end
+	local door = createBuildingComponent("Doors", "Door", doorCFrame, building, buildingIndex, doorSize)
+	if door then partsCreated = partsCreated + 1 end
 	
 	-- ====== FENÊTRES ======
-	-- 2 fenêtres sur le mur est, espacées
 	local windowY = CONFIG.FLOOR_HEIGHT + CONFIG.BUILDING_HEIGHT * 0.5
+	local windowSize = Vector3.new(CONFIG.WINDOW_SIZE, CONFIG.WINDOW_SIZE, CONFIG.WALL_THICKNESS)
 	
 	for i = 1, 2 do
-		local windowZOffset = (i - 1.5) * 5  -- Espacement de 5 studs entre fenêtres
+		local windowZOffset = (i - 1.5) * 5
 		local windowCFrame = baseCFrame * CFrame.new(CONFIG.BUILDING_WIDTH / 2 + 0.6, windowY, windowZOffset) * CFrame.Angles(0, math.pi / 2, 0)
 		
-		local window = createBuildingComponent("Windows", "Window_" .. i, windowCFrame, building, buildingIndex)
-		if window then
-			partsCreated = partsCreated + 1
-			table.insert(componentsList, window)
-			if window:IsA("BasePart") then
-				window.Size = Vector3.new(CONFIG.WINDOW_SIZE, CONFIG.WINDOW_SIZE, CONFIG.WALL_THICKNESS)
-			end
-		end
+		local window = createBuildingComponent("Windows", "Window_" .. i, windowCFrame, building, buildingIndex, windowSize)
+		if window then partsCreated = partsCreated + 1 end
 	end
 	
-	print(string.format("✓ Building_%d créé avec %d éléments", buildingIndex, partsCreated))
+	print(string.format("========== ✓ Building_%d : %d éléments créés ==========", buildingIndex, partsCreated))
 	
-	-- Définir la PrimaryPart du bâtiment (utilise le sol si disponible)
+	-- Définir la PrimaryPart
 	if floor and floor:IsA("BasePart") then
 		building.PrimaryPart = floor
 	elseif floor and floor:IsA("Model") and floor.PrimaryPart then
@@ -737,10 +727,9 @@ local function generateVillage()
 		local building = createBuilding(Vector3.new(x, 0, z), angle - math.pi / 2, i)
 		building.Parent = villageFolder
 		
-		-- Vérification post-parenting
 		task.wait(0.1)
 		local childCount = #building:GetChildren()
-		print(string.format("Building_%d parent dans Village - %d enfants détectés", i, childCount))
+		print(string.format("Building_%d parenté dans Village - %d enfants détectés", i, childCount))
 	end
 	
 	print("========================================")
@@ -770,8 +759,7 @@ local function createFortifications()
 		gateModel.Name = doorData.name
 		gateModel.Parent = fortFolder
 		
-		-- Portail central
-		local gatePrefab = getRandomPrefabFromCategory("Gates")
+		local gatePrefab, _ = getRandomPrefabWithFallback("Gates", {"Doors", "Pillars", "AllPrefabs"})
 		if gatePrefab then
 			local gate = clonePrefabDeep(gatePrefab, "Gates")
 			if gate then
@@ -785,8 +773,7 @@ local function createFortifications()
 			end
 		end
 		
-		-- Piliers de chaque côté (espacés de 10 studs)
-		local pillarPrefab = getRandomPrefabFromCategory("Pillars")
+		local pillarPrefab, _ = getRandomPrefabWithFallback("Pillars", {"Walls", "AllPrefabs"})
 		if pillarPrefab then
 			local pillarSize = getModelSize(pillarPrefab)
 			local yPosition = 0.5 + (pillarSize.Y / 2)
@@ -817,7 +804,7 @@ local function createFortifications()
 end
 
 -- ========================================
--- PLACE CENTRALE - AMÉLIORÉ
+-- PLACE CENTRALE
 -- ========================================
 
 local function createCentralSquare()
@@ -856,7 +843,7 @@ local function createCentralSquare()
 		local x = math.cos(angle) * distance
 		local z = math.sin(angle) * distance
 		
-		local benchPrefab = getRandomPrefabFromCategory("Benches")
+		local benchPrefab, _ = getRandomPrefabWithFallback("Benches", {"Barrels", "AllPrefabs"})
 		if benchPrefab then
 			local bench = clonePrefabDeep(benchPrefab, "Benches")
 			if bench then
@@ -880,9 +867,8 @@ local function createCentralSquare()
 		local x = math.cos(angle) * distance
 		local z = math.sin(angle) * distance
 		
-		-- Barils
 		if i % 2 == 1 then
-			local barrelPrefab = getRandomPrefabFromCategory("Barrels")
+			local barrelPrefab, _ = getRandomPrefabWithFallback("Barrels", {"Benches", "AllPrefabs"})
 			if barrelPrefab then
 				local barrel = clonePrefabDeep(barrelPrefab, "Barrels")
 				if barrel then
@@ -899,9 +885,8 @@ local function createCentralSquare()
 			end
 		end
 		
-		-- Lampadaires
 		if i % 2 == 0 then
-			local lampPrefab = getRandomPrefabFromCategory("Lamps")
+			local lampPrefab, _ = getRandomPrefabWithFallback("Lamps", {"Pillars", "AllPrefabs"})
 			if lampPrefab then
 				local lamp = clonePrefabDeep(lampPrefab, "Lamps")
 				if lamp then
@@ -915,7 +900,7 @@ local function createCentralSquare()
 					
 					lamp.Parent = squareFolder
 					
-					-- Ajout d'une lumière si pas déjà présente
+					-- Ajout d'une lumière
 					local hasLight = false
 					if lamp:IsA("BasePart") then
 						for _, child in ipairs(lamp:GetChildren()) do
@@ -1018,30 +1003,25 @@ local function generateWorld()
 	print("WorldBuilder: DÉBUT DE LA GÉNÉRATION DU MONDE")
 	print("========================================")
 	
-	-- Vérification et catégorisation des Prefabs
 	local prefabsFolder = getPrefabsFolder()
 	if prefabsFolder then
 		local prefabCount = #prefabsFolder:GetChildren()
 		print("WorldBuilder: " .. prefabCount .. " prefabs détectés (dossier PLAT)")
 		
-		-- Catégorisation automatique
 		categorizePrefabs()
 	else
 		warn("WorldBuilder: AUCUN PREFAB DÉTECTÉ - Génération impossible")
 	end
 	
-	-- Génération du terrain
 	createBasePlate()
 	print("✓ BasePlate créée")
 	
-	-- Génération des ressources naturelles
 	generateForest()
 	print("✓ Forêt générée")
 	
 	generateRocks()
 	print("✓ Rochers générés")
 	
-	-- Génération du village
 	generateVillage()
 	print("✓ Village généré")
 	
@@ -1051,11 +1031,9 @@ local function generateWorld()
 	createCentralSquare()
 	print("✓ Place centrale créée")
 	
-	-- Génération des spawns
 	createMonsterSpawns()
 	print("✓ Points de spawn créés")
 	
-	-- Configuration finale
 	configureLighting()
 	print("✓ Éclairage configuré")
 	
