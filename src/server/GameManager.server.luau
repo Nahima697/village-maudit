@@ -1,500 +1,350 @@
--- GameManager.server.luau
--- Gère les phases du jeu, la synchronisation réseau et l'orchestration globale
--- RESPONSABILITÉ : Créer TOUS les RemoteEvents globaux dès le démarrage
+-- WorldBuilder.server.luau
+-- Génération procédurale du monde avec raycasting pour le Smooth Terrain
+-- RESPONSABILITÉ : Créer la map avant le spawn des joueurs
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ServerScriptService = game:GetService("ServerScriptService")
-local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local WorldBuilder = {}
 
 -- ============================================================
--- SECTION 1 : CRÉATION DES RESSOURCES GLOBALES (ANTI-CRASH)
+-- CONFIGURATION DE LA GÉNÉRATION
 -- ============================================================
 
--- Création du dossier RemoteEvents s'il n'existe pas
-local remoteEventsFolder = ReplicatedStorage:FindFirstChild("RemoteEvents")
-if not remoteEventsFolder then
-	remoteEventsFolder = Instance.new("Folder")
-	remoteEventsFolder.Name = "RemoteEvents"
-	remoteEventsFolder.Parent = ReplicatedStorage
-	warn("[GameManager] Dossier RemoteEvents créé")
-end
-
--- Création de TOUS les RemoteEvents nécessaires avec vérification stricte
-local function createRemoteEvent(name)
-	local existingEvent = remoteEventsFolder:FindFirstChild(name)
-	if existingEvent and existingEvent:IsA("RemoteEvent") then
-		print("[GameManager] RemoteEvent existant réutilisé :", name)
-		return existingEvent
-	end
+local CONFIG = {
+	MAP_RADIUS = 300,
+	VILLAGE_RADIUS = 60,
+	VILLAGE_CENTER = Vector3.new(0, 0, 0),
 	
-	local remoteEvent = Instance.new("RemoteEvent")
-	remoteEvent.Name = name
-	remoteEvent.Parent = remoteEventsFolder
-	print("[GameManager] RemoteEvent créé :", name)
-	return remoteEvent
-end
-
--- Liste exhaustive des RemoteEvents du jeu (AVEC VALIDATION)
-local AssignRoleEvent = createRemoteEvent("AssignRole")
-local TraitorSabotageEvent = createRemoteEvent("TraitorSabotage")
-local PhaseChangeEvent = createRemoteEvent("PhaseChange")
-local VoteStartEvent = createRemoteEvent("VoteStart")
-local VoteEndEvent = createRemoteEvent("VoteEnd")
-local PlayerVoteEvent = createRemoteEvent("PlayerVote")
-local GameStateUpdateEvent = createRemoteEvent("GameStateUpdate")
-local NightStartEvent = createRemoteEvent("NightStart")
-local DayStartEvent = createRemoteEvent("DayStart")
-local GameEndEvent = createRemoteEvent("GameEnd")
-
--- 🔧 FIX #1 : Création du RemoteEvent manquant pour le système de craft
-local CollectResourceEvent = createRemoteEvent("CollectResourceEvent")
-
--- VALIDATION CRITIQUE : Vérifier que tous les events sont créés
-assert(AssignRoleEvent, "[CRASH PREVENTION] AssignRoleEvent est nil")
-assert(DayStartEvent, "[CRASH PREVENTION] DayStartEvent est nil")
-assert(NightStartEvent, "[CRASH PREVENTION] NightStartEvent est nil")
-assert(VoteStartEvent, "[CRASH PREVENTION] VoteStartEvent est nil")
-assert(VoteEndEvent, "[CRASH PREVENTION] VoteEndEvent est nil")
-assert(GameEndEvent, "[CRASH PREVENTION] GameEndEvent est nil")
-assert(GameStateUpdateEvent, "[CRASH PREVENTION] GameStateUpdateEvent est nil")
-assert(CollectResourceEvent, "[CRASH PREVENTION] CollectResourceEvent est nil")
-
-print("[GameManager] ✅ Tous les RemoteEvents validés (incluant CollectResourceEvent)")
-
--- Création du dossier SharedData pour les attributs globaux
-local sharedData = ReplicatedStorage:FindFirstChild("SharedData")
-if not sharedData then
-	sharedData = Instance.new("Folder")
-	sharedData.Name = "SharedData"
-	sharedData.Parent = ReplicatedStorage
-end
-
--- Initialisation des attributs globaux avec des valeurs par défaut sécurisées
-sharedData:SetAttribute("CurrentPhase", "Waiting") -- Phases: Waiting, Day, Night, Voting, End
-sharedData:SetAttribute("NightCount", 0)
-sharedData:SetAttribute("PhaseTimeRemaining", 0)
-sharedData:SetAttribute("MinPlayers", 3)
-sharedData:SetAttribute("GameActive", false)
-
--- ============================================================
--- SECTION 2 : CHARGEMENT DE LA CONFIGURATION
--- ============================================================
-
-local GameConfig = require(ReplicatedStorage.Modules.GameConfig)
-
--- Vérification et sécurisation de la configuration
-local PHASE_DURATION = {
-	Day = GameConfig.PHASE_DURATION and GameConfig.PHASE_DURATION.Day or 120,
-	Night = GameConfig.PHASE_DURATION and GameConfig.PHASE_DURATION.Night or 90,
-	Voting = GameConfig.PHASE_DURATION and GameConfig.PHASE_DURATION.Voting or 60
+	FOREST = {
+		TREE_COUNT = 150,
+		MIN_DISTANCE = 8,
+		TRUNK_HEIGHT = {6, 12},
+		CANOPY_SIZE = {4, 8}
+	},
+	
+	RESOURCES = {
+		ROCK_COUNT = 40,
+		CAMPFIRE_COUNT = 8
+	},
+	
+	WALLS = {
+		HEIGHT = 8,
+		THICKNESS = 2,
+		SEGMENT_LENGTH = 10
+	},
+	
+	RAYCAST_HEIGHT = 200,
+	RAYCAST_DISTANCE = 300
 }
 
-local MIN_PLAYERS = GameConfig.MIN_PLAYERS or 3
-local LOBBY_WAIT_TIME = GameConfig.LOBBY_WAIT_TIME or 15
-
 -- ============================================================
--- SECTION 3 : VARIABLES D'ÉTAT DU JEU
+-- UTILITAIRES DE RAYCASTING
 -- ============================================================
 
-local gameActive = false
-local currentPhase = "Waiting"
-local nightCount = 0
-local phaseTimeRemaining = 0
-local alivePlayers = {}
-local playerRoles = {} -- Table {[Player] = "Innocent" | "Traitor"}
+-- Trouve la hauteur Y du terrain à une position XZ donnée
+local function getTerrainHeight(x, z)
+	local rayOrigin = Vector3.new(x, CONFIG.RAYCAST_HEIGHT, z)
+	local rayDirection = Vector3.new(0, -CONFIG.RAYCAST_DISTANCE, 0)
+	
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Whitelist
+	raycastParams.FilterDescendantsInstances = {Workspace.Terrain}
+	
+	local result = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+	
+	if result then
+		return result.Position.Y
+	else
+		warn("[WorldBuilder] Aucun terrain trouvé à X=" .. x .. ", Z=" .. z .. " - Utilisation de Y=0")
+		return 0
+	end
+end
 
--- 🔧 FIX #3 : Variable pour tracker si la première nuit est passée
-local firstNightCompleted = false
+-- Vérifie si une position est dans le village
+local function isInVillage(position)
+	local distance = (Vector3.new(position.X, 0, position.Z) - Vector3.new(CONFIG.VILLAGE_CENTER.X, 0, CONFIG.VILLAGE_CENTER.Z)).Magnitude
+	return distance <= CONFIG.VILLAGE_RADIUS
+end
+
+-- Génère une position aléatoire dans la map
+local function getRandomPosition()
+	local angle = math.random() * math.pi * 2
+	local distance = math.random() * CONFIG.MAP_RADIUS
+	local x = CONFIG.VILLAGE_CENTER.X + math.cos(angle) * distance
+	local z = CONFIG.VILLAGE_CENTER.Z + math.sin(angle) * distance
+	local y = getTerrainHeight(x, z)
+	
+	return Vector3.new(x, y, z)
+end
 
 -- ============================================================
--- SECTION 4 : FONCTIONS UTILITAIRES
+-- NETTOYAGE DE LA MAP
 -- ============================================================
 
--- Compte le nombre de joueurs vivants
-local function countAlivePlayers()
-	local count = 0
-	for player, isAlive in pairs(alivePlayers) do
-		if isAlive and player.Parent == Players then
-			count = count + 1
+function WorldBuilder.CleanMap()
+	print("[WorldBuilder] 🧹 Nettoyage de la map existante...")
+	
+	local foldersToClean = {"Campfires", "Hazards", "Rocks", "Trees", "Village", "WorldObjects"}
+	
+	for _, folderName in ipairs(foldersToClean) do
+		local folder = Workspace:FindFirstChild(folderName)
+		if folder then
+			folder:Destroy()
+			print("[WorldBuilder] ✅ Dossier supprimé :", folderName)
 		end
 	end
-	return count
-end
-
--- Compte les traîtres vivants
-local function countAliveTraitors()
-	local count = 0
-	for player, role in pairs(playerRoles) do
-		if role == "Traitor" and alivePlayers[player] and player.Parent == Players then
-			count = count + 1
-		end
-	end
-	return count
-end
-
--- Compte les innocents vivants
-local function countAliveInnocents()
-	local count = 0
-	for player, role in pairs(playerRoles) do
-		if role == "Innocent" and alivePlayers[player] and player.Parent == Players then
-			count = count + 1
-		end
-	end
-	return count
-end
-
--- Diffuse un message à tous les joueurs
-local function broadcastMessage(message, color)
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player:FindFirstChild("PlayerGui") then
-			print("[BROADCAST]", player.Name, ":", message)
-		end
-	end
-end
-
--- Met à jour l'attribut de phase dans SharedData
-local function updatePhaseAttribute(newPhase)
-	currentPhase = newPhase
-	sharedData:SetAttribute("CurrentPhase", newPhase)
-	PhaseChangeEvent:FireAllClients(newPhase)
-end
-
--- Met à jour le temps restant dans SharedData
-local function updateTimeAttribute(timeRemaining)
-	phaseTimeRemaining = math.max(0, timeRemaining or 0)
-	sharedData:SetAttribute("PhaseTimeRemaining", phaseTimeRemaining)
+	
+	task.wait(0.5) -- Attendre la suppression
 end
 
 -- ============================================================
--- SECTION 5 : GESTION DES PHASES
+-- GÉNÉRATION DES STRUCTURES
 -- ============================================================
 
--- Démarre la phase de jour
-local startDayPhase, startVotingPhase, startNightPhase
-function startDayPhase()
-	updatePhaseAttribute("Day")
+-- Crée un arbre procédural
+local function createTree(position)
+	local tree = Instance.new("Model")
+	tree.Name = "Tree"
 	
-	local dayDuration = PHASE_DURATION.Day or 120
-	updateTimeAttribute(dayDuration)
+	-- Tronc
+	local trunk = Instance.new("Part")
+	trunk.Name = "Trunk"
+	trunk.Size = Vector3.new(2, math.random(CONFIG.FOREST.TRUNK_HEIGHT[1], CONFIG.FOREST.TRUNK_HEIGHT[2]), 2)
+	trunk.Position = position + Vector3.new(0, trunk.Size.Y / 2, 0)
+	trunk.Anchored = true
+	trunk.Material = Enum.Material.Wood
+	trunk.BrickColor = BrickColor.new("Brown")
+	trunk.Parent = tree
 	
-	-- 🔧 FIX #3 : Message différent selon si c'est le premier jour
-	if not firstNightCompleted then
-		broadcastMessage("☀️ Premier jour ! Préparez-vous pour la nuit à venir...", Color3.fromRGB(255, 200, 100))
-	else
-		broadcastMessage("☀️ Le jour se lève ! Discutez pour trouver les traîtres.", Color3.fromRGB(255, 200, 100))
-	end
+	-- Feuillage
+	local canopySize = math.random(CONFIG.FOREST.CANOPY_SIZE[1], CONFIG.FOREST.CANOPY_SIZE[2])
+	local canopy = Instance.new("Part")
+	canopy.Name = "Canopy"
+	canopy.Size = Vector3.new(canopySize, canopySize, canopySize)
+	canopy.Shape = Enum.PartType.Ball
+	canopy.Position = trunk.Position + Vector3.new(0, trunk.Size.Y / 2 + canopySize / 2, 0)
+	canopy.Anchored = true
+	canopy.Material = Enum.Material.Grass
+	canopy.BrickColor = BrickColor.new("Dark green")
+	canopy.Parent = tree
 	
-	-- FIX CRITIQUE : Vérification avant appel
-	if DayStartEvent then
-		DayStartEvent:FireAllClients(dayDuration)
-	else
-		warn("[CRASH PREVENTED] DayStartEvent est nil à la ligne 172")
-	end
-	
-	-- Timer de phase
-	local startTime = tick()
-	while (tick() - startTime) < dayDuration and gameActive do
-		local remaining = dayDuration - (tick() - startTime)
-		updateTimeAttribute(remaining)
-		task.wait(1)
-	end
-	
-	if gameActive then
-		-- 🔧 FIX #3 : Ne lance le vote QUE si la première nuit est terminée
-		if firstNightCompleted then
-			startVotingPhase()
-		else
-			-- Passe directement à la nuit si c'est le premier jour
-			startNightPhase()
-		end
-	end
+	tree.PrimaryPart = trunk
+	return tree
 end
 
--- Démarre la phase de vote
-function startVotingPhase()
-	updatePhaseAttribute("Voting")
+-- Crée un rocher
+local function createRock(position)
+	local rock = Instance.new("Part")
+	rock.Name = "Rock"
+	rock.Size = Vector3.new(math.random(3, 6), math.random(2, 4), math.random(3, 6))
+	rock.Position = position + Vector3.new(0, rock.Size.Y / 2, 0)
+	rock.Anchored = true
+	rock.Material = Enum.Material.Slate
+	rock.BrickColor = BrickColor.new("Medium stone grey")
+	rock.Shape = Enum.PartType.Ball
 	
-	local voteDuration = PHASE_DURATION.Voting or 60
-	updateTimeAttribute(voteDuration)
+	-- Tag pour le système de craft
+	rock:SetAttribute("ResourceType", "Stone")
+	rock:SetAttribute("ResourceAmount", 5)
 	
-	broadcastMessage("🗳️ Phase de vote ! Désignez un suspect.", Color3.fromRGB(100, 150, 255))
-	
-	-- FIX CRITIQUE : Vérification avant appel
-	if VoteStartEvent then
-		VoteStartEvent:FireAllClients(voteDuration)
-	else
-		warn("[CRASH PREVENTED] VoteStartEvent est nil")
-	end
-	
-	task.wait(voteDuration)
-	
-	if gameActive then
-		if VoteEndEvent then
-			VoteEndEvent:FireAllClients()
-		end
-		task.wait(5)
-		startNightPhase()
-	end
+	return rock
 end
 
--- Démarre la phase de nuit
-function startNightPhase()
-	updatePhaseAttribute("Night")
+-- Crée un feu de camp
+local function createCampfire(position)
+	local campfire = Instance.new("Model")
+	campfire.Name = "Campfire"
 	
-	nightCount = nightCount + 1
-	sharedData:SetAttribute("NightCount", nightCount)
+	-- Base
+	local base = Instance.new("Part")
+	base.Name = "Base"
+	base.Size = Vector3.new(4, 0.5, 4)
+	base.Position = position + Vector3.new(0, 0.25, 0)
+	base.Anchored = true
+	base.Material = Enum.Material.Cobblestone
+	base.BrickColor = BrickColor.new("Black")
+	base.Parent = campfire
 	
-	local nightDuration = PHASE_DURATION.Night or 90
-	updateTimeAttribute(nightDuration)
+	-- Feu
+	local fire = Instance.new("Part")
+	fire.Name = "Fire"
+	fire.Size = Vector3.new(2, 3, 2)
+	fire.Position = base.Position + Vector3.new(0, 2, 0)
+	fire.Anchored = true
+	fire.Material = Enum.Material.Neon
+	fire.BrickColor = BrickColor.new("Deep orange")
+	fire.Transparency = 0.3
+	fire.Parent = campfire
 	
-	-- 🔧 FIX #3 : Message différent pour la première nuit
-	if not firstNightCompleted then
-		broadcastMessage("🌙 Première nuit... Les traîtres découvrent leur pouvoir.", Color3.fromRGB(50, 50, 150))
-	else
-		broadcastMessage("🌙 La nuit tombe... Les traîtres agissent dans l'ombre.", Color3.fromRGB(50, 50, 150))
-	end
+	-- Lumière
+	local light = Instance.new("PointLight")
+	light.Brightness = 2
+	light.Range = 30
+	light.Color = Color3.fromRGB(255, 100, 0)
+	light.Parent = fire
 	
-	-- FIX CRITIQUE : Vérification avant appel
-	if NightStartEvent then
-		NightStartEvent:FireAllClients(nightDuration)
-	else
-		warn("[CRASH PREVENTED] NightStartEvent est nil")
-	end
-	
-	-- Timer de phase
-	local startTime = tick()
-	while (tick() - startTime) < nightDuration and gameActive do
-		local remaining = nightDuration - (tick() - startTime)
-		updateTimeAttribute(remaining)
-		task.wait(1)
-	end
-	
-	-- 🔧 FIX #3 : Marquer la première nuit comme terminée
-	if not firstNightCompleted then
-		firstNightCompleted = true
-		print("[GameManager] 🌙 Première nuit terminée, votes activés pour les prochains jours")
-	end
-	
-	if gameActive then
-		checkWinConditions()
-	end
+	campfire.PrimaryPart = base
+	return campfire
 end
 
 -- ============================================================
--- SECTION 6 : CONDITIONS DE VICTOIRE
+-- GÉNÉRATION DE LA FORÊT
 -- ============================================================
 
-local function checkWinConditions()
-	local aliveCount = countAlivePlayers()
-	local traitorCount = countAliveTraitors()
-	local innocentCount = countAliveInnocents()
+function WorldBuilder.GenerateForest()
+	print("[WorldBuilder] 🌲 Génération de la forêt...")
 	
-	aliveCount = aliveCount or 0
-	traitorCount = traitorCount or 0
-	innocentCount = innocentCount or 0
+	local treesFolder = Instance.new("Folder")
+	treesFolder.Name = "Trees"
+	treesFolder.Parent = Workspace
 	
-	if traitorCount <= 0 then
-		endGame("Innocents")
-		return
-	end
+	local treePositions = {}
+	local treesPlaced = 0
+	local maxAttempts = CONFIG.FOREST.TREE_COUNT * 5
+	local attempts = 0
 	
-	if traitorCount >= innocentCount then
-		endGame("Traitors")
-		return
-	end
-	
-	if gameActive then
-		startDayPhase()
-	end
-end
-
--- Termine le jeu
-function endGame(winner)
-	gameActive = false
-	updatePhaseAttribute("End")
-	sharedData:SetAttribute("GameActive", false)
-	
-	local message = ""
-	if winner == "Innocents" then
-		message = "🏆 Les INNOCENTS ont gagné ! Tous les traîtres ont été éliminés."
-	elseif winner == "Traitors" then
-		message = "💀 Les TRAÎTRES ont gagné ! Ils contrôlent le village."
-	else
-		message = "⚠️ Partie terminée sans vainqueur."
-	end
-	
-	broadcastMessage(message, Color3.fromRGB(255, 255, 0))
-	
-	if GameEndEvent then
-		GameEndEvent:FireAllClients(winner)
-	end
-	
-	task.wait(10)
-	resetGame()
-end
-
--- ============================================================
--- SECTION 7 : DÉMARRAGE ET RÉINITIALISATION
--- ============================================================
-
-local function initializePlayers()
-	alivePlayers = {}
-	playerRoles = {}
-	
-	local playerList = Players:GetPlayers()
-	local playerCount = #playerList
-	
-	if playerCount < (MIN_PLAYERS or 3) then
-		warn("[GameManager] Pas assez de joueurs pour démarrer")
-		return false
-	end
-	
-	local traitorCount = math.max(1, math.floor(playerCount * 0.25))
-	
-	local shuffledPlayers = {}
-	for i, player in ipairs(playerList) do
-		shuffledPlayers[i] = player
-	end
-	
-	for i = #shuffledPlayers, 2, -1 do
-		local j = math.random(i)
-		shuffledPlayers[i], shuffledPlayers[j] = shuffledPlayers[j], shuffledPlayers[i]
-	end
-	
-	for i, player in ipairs(shuffledPlayers) do
-		local role = (i <= traitorCount) and "Traitor" or "Innocent"
-		playerRoles[player] = role
-		alivePlayers[player] = true
+	while treesPlaced < CONFIG.FOREST.TREE_COUNT and attempts < maxAttempts do
+		attempts = attempts + 1
 		
-		if AssignRoleEvent then
-			AssignRoleEvent:FireClient(player, role)
+		local position = getRandomPosition()
+		
+		-- Ne pas placer dans le village
+		if isInVillage(position) then
+			continue
 		end
-		print("[GameManager] Rôle assigné :", player.Name, "=", role)
-	end
-	
-	return true
-end
-
-function startGame()
-	if gameActive then
-		warn("[GameManager] Une partie est déjà en cours")
-		return
-	end
-	
-	print("[GameManager] Démarrage d'une nouvelle partie...")
-	
-	nightCount = 0
-	firstNightCompleted = false -- 🔧 FIX #3 : Reset du flag
-	sharedData:SetAttribute("NightCount", 0)
-	
-	if not initializePlayers() then
-		warn("[GameManager] Échec de l'initialisation des joueurs")
-		return
-	end
-	
-	gameActive = true
-	sharedData:SetAttribute("GameActive", true)
-	
-	broadcastMessage("🎮 La partie commence ! Survivez aux nuits...", Color3.fromRGB(0, 255, 0))
-	
-	task.wait(5)
-	
-	-- 🔧 FIX #3 : Commencer par un JOUR (sans vote possible)
-	startDayPhase()
-end
-
-function resetGame()
-	gameActive = false
-	currentPhase = "Waiting"
-	nightCount = 0
-	phaseTimeRemaining = 0
-	alivePlayers = {}
-	playerRoles = {}
-	firstNightCompleted = false -- 🔧 FIX #3 : Reset du flag
-	
-	updatePhaseAttribute("Waiting")
-	sharedData:SetAttribute("NightCount", 0)
-	sharedData:SetAttribute("GameActive", false)
-	updateTimeAttribute(0)
-	
-	print("[GameManager] Jeu réinitialisé, en attente de joueurs...")
-	waitForPlayers()
-end
-
-function waitForPlayers()
-	updatePhaseAttribute("Waiting")
-	
-	while true do
-		local playerCount = #Players:GetPlayers()
-		local minPlayers = MIN_PLAYERS or 3
 		
-		playerCount = playerCount or 0
-		
-		if playerCount >= minPlayers then
-			broadcastMessage("✅ Joueurs suffisants ! Démarrage dans " .. LOBBY_WAIT_TIME .. " secondes...", Color3.fromRGB(0, 255, 0))
-			task.wait(LOBBY_WAIT_TIME or 15)
-			
-			if #Players:GetPlayers() >= minPlayers then
-				startGame()
+		-- Vérifier la distance minimale avec les autres arbres
+		local tooClose = false
+		for _, existingPos in ipairs(treePositions) do
+			if (position - existingPos).Magnitude < CONFIG.FOREST.MIN_DISTANCE then
+				tooClose = true
 				break
-			else
-				broadcastMessage("⚠️ Pas assez de joueurs, attente...", Color3.fromRGB(255, 100, 0))
 			end
-		else
-			task.wait(5)
+		end
+		
+		if not tooClose then
+			local tree = createTree(position)
+			tree.Parent = treesFolder
+			table.insert(treePositions, position)
+			treesPlaced = treesPlaced + 1
 		end
 	end
+	
+	print("[WorldBuilder] ✅ Forêt générée :", treesPlaced, "arbres")
 end
 
 -- ============================================================
--- SECTION 8 : GESTION DES JOUEURS (CONNEXION/DÉCONNEXION)
+-- GÉNÉRATION DES RESSOURCES
 -- ============================================================
 
-Players.PlayerAdded:Connect(function(player)
-	print("[GameManager] Joueur connecté :", player.Name)
+function WorldBuilder.GenerateResources()
+	print("[WorldBuilder] ⛏️ Génération des ressources...")
 	
-	if gameActive then
-		alivePlayers[player] = false
-		playerRoles[player] = "Spectator"
-	end
+	-- Rochers
+	local rocksFolder = Instance.new("Folder")
+	rocksFolder.Name = "Rocks"
+	rocksFolder.Parent = Workspace
 	
-	if GameStateUpdateEvent then
-		GameStateUpdateEvent:FireClient(player, {
-			Phase = currentPhase,
-			NightCount = nightCount,
-			TimeRemaining = phaseTimeRemaining or 0,
-			IsAlive = alivePlayers[player] or false
-		})
-	end
-end)
-
-Players.PlayerRemoving:Connect(function(player)
-	print("[GameManager] Joueur déconnecté :", player.Name)
-	
-	if alivePlayers[player] then
-		alivePlayers[player] = false
-	end
-	playerRoles[player] = nil
-	
-	if gameActive then
-		task.wait(1)
-		local aliveCount = countAlivePlayers() or 0
-		
-		if aliveCount < 2 then
-			endGame("None")
-		else
-			checkWinConditions()
+	for i = 1, CONFIG.RESOURCES.ROCK_COUNT do
+		local position = getRandomPosition()
+		if not isInVillage(position) then
+			local rock = createRock(position)
+			rock.Parent = rocksFolder
 		end
 	end
-end)
+	
+	-- Feux de camp
+	local campfiresFolder = Instance.new("Folder")
+	campfiresFolder.Name = "Campfires"
+	campfiresFolder.Parent = Workspace
+	
+	for i = 1, CONFIG.RESOURCES.CAMPFIRE_COUNT do
+		local position = getRandomPosition()
+		if not isInVillage(position) then
+			local campfire = createCampfire(position)
+			campfire.Parent = campfiresFolder
+		end
+	end
+	
+	print("[WorldBuilder] ✅ Ressources générées")
+end
 
 -- ============================================================
--- SECTION 9 : DÉMARRAGE DU GAMEMANAGER
+-- GÉNÉRATION DU VILLAGE
 -- ============================================================
 
-print("[GameManager] Initialisation complète ✅")
-print("[GameManager] Configuration : Day=" .. (PHASE_DURATION.Day or 0) .. "s, Night=" .. (PHASE_DURATION.Night or 0) .. "s, Vote=" .. (PHASE_DURATION.Voting or 0) .. "s")
-print("[GameManager] Min joueurs :", MIN_PLAYERS or 3)
-print("[GameManager] 🔧 Cycle de jeu : Jour → Nuit (1ère) → Jour → Vote → Nuit → Jour → Vote...")
+function WorldBuilder.GenerateVillage()
+	print("[WorldBuilder] 🏘️ Génération du village...")
+	
+	local villageFolder = Instance.new("Folder")
+	villageFolder.Name = "Village"
+	villageFolder.Parent = Workspace
+	
+	-- Plateforme centrale
+	local centerY = getTerrainHeight(CONFIG.VILLAGE_CENTER.X, CONFIG.VILLAGE_CENTER.Z)
+	local platform = Instance.new("Part")
+	platform.Name = "VillagePlatform"
+	platform.Size = Vector3.new(CONFIG.VILLAGE_RADIUS * 2, 1, CONFIG.VILLAGE_RADIUS * 2)
+	platform.Position = Vector3.new(CONFIG.VILLAGE_CENTER.X, centerY - 0.5, CONFIG.VILLAGE_CENTER.Z)
+	platform.Anchored = true
+	platform.Material = Enum.Material.Cobblestone
+	platform.BrickColor = BrickColor.new("Medium stone grey")
+	platform.Parent = villageFolder
+	
+	-- Murs du village (avec raycasting pour chaque segment)
+	local wallsFolder = Instance.new("Folder")
+	wallsFolder.Name = "Walls"
+	wallsFolder.Parent = villageFolder
+	
+	local segments = math.ceil((2 * math.pi * CONFIG.VILLAGE_RADIUS) / CONFIG.WALLS.SEGMENT_LENGTH)
+	
+	for i = 0, segments do
+		local angle = (i / segments) * math.pi * 2
+		local x = CONFIG.VILLAGE_CENTER.X + math.cos(angle) * CONFIG.VILLAGE_RADIUS
+		local z = CONFIG.VILLAGE_CENTER.Z + math.sin(angle) * CONFIG.VILLAGE_RADIUS
+		local y = getTerrainHeight(x, z)
+		
+		local wall = Instance.new("Part")
+		wall.Name = "WallSegment"
+		wall.Size = Vector3.new(CONFIG.WALLS.THICKNESS, CONFIG.WALLS.HEIGHT, CONFIG.WALLS.SEGMENT_LENGTH)
+		wall.Position = Vector3.new(x, y + CONFIG.WALLS.HEIGHT / 2, z)
+		wall.Orientation = Vector3.new(0, math.deg(angle), 0)
+		wall.Anchored = true
+		wall.Material = Enum.Material.Brick
+		wall.BrickColor = BrickColor.new("Brown")
+		wall.Parent = wallsFolder
+	end
+	
+	print("[WorldBuilder] ✅ Village généré")
+end
 
-waitForPlayers()
+-- ============================================================
+-- GÉNÉRATION COMPLÈTE
+-- ============================================================
+
+function WorldBuilder.Generate()
+	print("[WorldBuilder] 🌍 ===== GÉNÉRATION DU MONDE =====")
+	
+	-- Étape 1 : Nettoyage
+	WorldBuilder.CleanMap()
+	
+	-- Étape 2 : Village (prioritaire car il définit la zone safe)
+	WorldBuilder.GenerateVillage()
+	task.wait(0.5)
+	
+	-- Étape 3 : Forêt
+	WorldBuilder.GenerateForest()
+	task.wait(0.5)
+	
+	-- Étape 4 : Ressources
+	WorldBuilder.GenerateResources()
+	
+	print("[WorldBuilder] 🌍 ===== GÉNÉRATION TERMINÉE =====")
+end
+
+-- ============================================================
+-- INITIALISATION AU DÉMARRAGE DU SERVEUR
+-- ============================================================
+
+print("[WorldBuilder] Module chargé ✅")
