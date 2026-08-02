@@ -170,7 +170,8 @@ end
 -- ============================================================
 
 -- Démarre la phase de jour
-local function startDayPhase()
+local startDayPhase, startVotingPhase, startNightPhase
+function startDayPhase()
 	updatePhaseAttribute("Day")
 	
 	local dayDuration = PHASE_DURATION.Day or 120
@@ -210,7 +211,7 @@ local function startDayPhase()
 end
 
 -- Démarre la phase de vote
-local function startVotingPhase()
+function startVotingPhase()
 	updatePhaseAttribute("Voting")
 	
 	local voteDuration = PHASE_DURATION.Voting or 60
@@ -237,7 +238,7 @@ local function startVotingPhase()
 end
 
 -- Démarre la phase de nuit
-local function startNightPhase()
+function startNightPhase()
 	updatePhaseAttribute("Night")
 	
 	nightCount = nightCount + 1

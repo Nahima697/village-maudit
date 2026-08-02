@@ -3,7 +3,7 @@
     Génère le monde en utilisant les prefabs de ReplicatedStorage
     et tague automatiquement les arbres et rochers pour la récolte
     
-    ADAPTATION : Fonctionne avec un dossier Prefabs PLAT (pas de sous-dossiers)
+    ADAPTATION : Fonctionne avec des MeshParts/BaseParts directs (dossier plat)
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -119,7 +119,8 @@ local function categorizePrefabs()
 		if #prefabs > 0 then
 			print(string.format("  %s: %d prefab(s)", category, #prefabs))
 			for _, prefab in ipairs(prefabs) do
-				print(string.format("    - %s", prefab.Name))
+				local prefabType = prefab.ClassName
+				print(string.format("    - %s (%s)", prefab.Name, prefabType))
 			end
 		end
 	end
@@ -138,19 +139,50 @@ end
 
 local function clonePrefab(prefab)
 	if not prefab then return nil end
-	return prefab:Clone()
+	local clone = prefab:Clone()
+	
+	-- GESTION DIRECTE DES MESHPARTS / BASEPARTS
+	if clone:IsA("BasePart") then
+		clone.Anchored = true
+		clone.CanCollide = true
+	elseif clone:IsA("Model") then
+		-- Ancrer toutes les parts du modèle
+		for _, descendant in ipairs(clone:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+			end
+		end
+		
+		-- Définir la PrimaryPart si absente
+		if not clone.PrimaryPart then
+			local primaryPart = clone:FindFirstChildWhichIsA("BasePart")
+			if primaryPart then
+				clone.PrimaryPart = primaryPart
+			end
+		end
+	end
+	
+	return clone
 end
 
 local function anchorModel(model)
-	for _, descendant in ipairs(model:GetDescendants()) do
-		if descendant:IsA("BasePart") then
-			descendant.Anchored = true
+	if model:IsA("BasePart") then
+		model.Anchored = true
+	elseif model:IsA("Model") then
+		for _, descendant in ipairs(model:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+			end
 		end
 	end
 end
 
 local function setModelPosition(model, position)
-	if model:IsA("Model") then
+	-- GESTION SIMPLIFIÉE POUR MESHPARTS
+	if model:IsA("BasePart") then
+		-- Pour les MeshParts et autres BaseParts directs
+		model.CFrame = CFrame.new(position)
+	elseif model:IsA("Model") then
 		if model.PrimaryPart then
 			model:SetPrimaryPartCFrame(CFrame.new(position))
 		else
@@ -160,13 +192,15 @@ local function setModelPosition(model, position)
 				model:SetPrimaryPartCFrame(CFrame.new(position))
 			end
 		end
-	elseif model:IsA("BasePart") then
-		model.Position = position
 	end
 end
 
 local function setModelCFrame(model, cframe)
-	if model:IsA("Model") then
+	-- GESTION SIMPLIFIÉE POUR MESHPARTS
+	if model:IsA("BasePart") then
+		-- Pour les MeshParts et autres BaseParts directs
+		model.CFrame = cframe
+	elseif model:IsA("Model") then
 		if model.PrimaryPart then
 			model:SetPrimaryPartCFrame(cframe)
 		else
@@ -176,18 +210,32 @@ local function setModelCFrame(model, cframe)
 				model:SetPrimaryPartCFrame(cframe)
 			end
 		end
-	elseif model:IsA("BasePart") then
-		model.CFrame = cframe
 	end
 end
 
 local function tagModelAsCollectable(model, resourceType)
-	for _, part in ipairs(model:GetDescendants()) do
-		if part:IsA("BasePart") then
-			CollectionService:AddTag(part, "Collectable")
-			part:SetAttribute("ResourceType", resourceType or "Wood")
+	if model:IsA("BasePart") then
+		-- Pour les MeshParts directs
+		CollectionService:AddTag(model, "Collectable")
+		model:SetAttribute("ResourceType", resourceType or "Wood")
+	elseif model:IsA("Model") then
+		for _, part in ipairs(model:GetDescendants()) do
+			if part:IsA("BasePart") then
+				CollectionService:AddTag(part, "Collectable")
+				part:SetAttribute("ResourceType", resourceType or "Wood")
+			end
 		end
 	end
+end
+
+local function getModelSize(model)
+	if model:IsA("BasePart") then
+		return model.Size
+	elseif model:IsA("Model") then
+		local _, size = model:GetBoundingBox()
+		return size
+	end
+	return Vector3.new(1, 1, 1)
 end
 
 -- ========================================
@@ -228,12 +276,13 @@ local function generateForest()
 	
 	print(string.format("WorldBuilder: Génération forêt avec %d types d'arbres", #treePrefabs))
 	
+	local successCount = 0
+	
 	for i = 1, CONFIG.TREE_COUNT do
 		local angle = math.random() * math.pi * 2
 		local distance = CONFIG.VILLAGE_RADIUS + 15 + math.random() * (CONFIG.FOREST_RADIUS - CONFIG.VILLAGE_RADIUS - 15)
 		local x = math.cos(angle) * distance
 		local z = math.sin(angle) * distance
-		local position = Vector3.new(x, 0.5, z)
 		
 		-- Placement d'un arbre
 		local treePrefab = getRandomPrefabFromCategory("Trees")
@@ -242,10 +291,19 @@ local function generateForest()
 			
 			if tree then
 				tree.Name = "Tree_" .. i
+				
+				-- Calculer la hauteur pour placer correctement
+				local treeSize = getModelSize(tree)
+				local yPosition = 0.5 + (treeSize.Y / 2)
+				local position = Vector3.new(x, yPosition, z)
+				
+				-- PARENTING AVANT POSITIONNEMENT (critique pour MeshParts)
 				tree.Parent = treesFolder
 				anchorModel(tree)
 				setModelPosition(tree, position)
 				tagModelAsCollectable(tree, "Wood")
+				
+				successCount = successCount + 1
 			end
 		end
 		
@@ -257,11 +315,15 @@ local function generateForest()
 				
 				if bush then
 					bush.Name = "Bush_" .. i
-					bush.Parent = treesFolder
-					anchorModel(bush)
+					
+					local bushSize = getModelSize(bush)
 					local offsetX = math.random(-8, 8)
 					local offsetZ = math.random(-8, 8)
-					setModelPosition(bush, position + Vector3.new(offsetX, 0, offsetZ))
+					local yPosition = 0.5 + (bushSize.Y / 2)
+					
+					bush.Parent = treesFolder
+					anchorModel(bush)
+					setModelPosition(bush, Vector3.new(x + offsetX, yPosition, z + offsetZ))
 				end
 			end
 		end
@@ -274,17 +336,21 @@ local function generateForest()
 				
 				if grass then
 					grass.Name = "Grass_" .. i
-					grass.Parent = treesFolder
-					anchorModel(grass)
+					
+					local grassSize = getModelSize(grass)
 					local offsetX = math.random(-5, 5)
 					local offsetZ = math.random(-5, 5)
-					setModelPosition(grass, position + Vector3.new(offsetX, 0, offsetZ))
+					local yPosition = 0.5 + (grassSize.Y / 2)
+					
+					grass.Parent = treesFolder
+					anchorModel(grass)
+					setModelPosition(grass, Vector3.new(x + offsetX, yPosition, z + offsetZ))
 				end
 			end
 		end
 	end
 	
-	print("WorldBuilder: Forêt générée avec " .. CONFIG.TREE_COUNT .. " arbres")
+	print(string.format("WorldBuilder: Forêt générée - %d/%d arbres instanciés avec succès", successCount, CONFIG.TREE_COUNT))
 end
 
 -- ========================================
@@ -305,12 +371,13 @@ local function generateRocks()
 	
 	print(string.format("WorldBuilder: Génération rochers avec %d types", #rockPrefabs))
 	
+	local successCount = 0
+	
 	for i = 1, CONFIG.ROCK_COUNT do
 		local angle = math.random() * math.pi * 2
 		local distance = CONFIG.VILLAGE_RADIUS + 5 + math.random() * (CONFIG.FOREST_RADIUS - CONFIG.VILLAGE_RADIUS - 10)
 		local x = math.cos(angle) * distance
 		local z = math.sin(angle) * distance
-		local position = Vector3.new(x, 0, z)
 		
 		local rockPrefab = getRandomPrefabFromCategory("Rocks")
 		if rockPrefab then
@@ -318,16 +385,23 @@ local function generateRocks()
 			
 			if rock then
 				rock.Name = "Rock_" .. i
+				
+				local rockSize = getModelSize(rock)
+				local yPosition = 0.5 + (rockSize.Y / 2)
+				local randomRotation = math.random() * math.pi * 2
+				
+				-- PARENTING AVANT POSITIONNEMENT
 				rock.Parent = rocksFolder
 				anchorModel(rock)
-				local randomRotation = math.random() * math.pi * 2
-				setModelCFrame(rock, CFrame.new(position) * CFrame.Angles(0, randomRotation, 0))
+				setModelCFrame(rock, CFrame.new(x, yPosition, z) * CFrame.Angles(0, randomRotation, 0))
 				tagModelAsCollectable(rock, "Stone")
+				
+				successCount = successCount + 1
 			end
 		end
 	end
 	
-	print("WorldBuilder: " .. CONFIG.ROCK_COUNT .. " rochers générés")
+	print(string.format("WorldBuilder: %d/%d rochers générés avec succès", successCount, CONFIG.ROCK_COUNT))
 end
 
 -- ========================================
@@ -346,20 +420,26 @@ local function createBuilding(position, angle, buildingIndex)
 		local floor = clonePrefab(floorPrefab)
 		if floor then
 			floor.Name = "Floor"
+			local floorSize = getModelSize(floor)
+			local yOffset = 0.5 + (floorSize.Y / 2)
+			
 			floor.Parent = building
 			anchorModel(floor)
-			setModelCFrame(floor, baseCFrame * CFrame.new(0, 0.5, 0))
+			setModelCFrame(floor, baseCFrame * CFrame.new(0, yOffset, 0))
 		end
 	end
 	
 	-- Murs (4 côtés)
 	local wallPrefab = getRandomPrefabFromCategory("Walls")
 	if wallPrefab then
+		local wallSize = getModelSize(wallPrefab)
+		local wallHeight = 3 + (wallSize.Y / 2)
+		
 		local wallPositions = {
-			{offset = CFrame.new(0, 6, -8), rotation = 0},
-			{offset = CFrame.new(8, 6, 0), rotation = math.pi/2},
-			{offset = CFrame.new(0, 6, 8), rotation = math.pi},
-			{offset = CFrame.new(-8, 6, 0), rotation = -math.pi/2}
+			{offset = CFrame.new(0, wallHeight, -8), rotation = 0},
+			{offset = CFrame.new(8, wallHeight, 0), rotation = math.pi/2},
+			{offset = CFrame.new(0, wallHeight, 8), rotation = math.pi},
+			{offset = CFrame.new(-8, wallHeight, 0), rotation = -math.pi/2}
 		}
 		
 		for i, wallData in ipairs(wallPositions) do
@@ -379,9 +459,12 @@ local function createBuilding(position, angle, buildingIndex)
 		local roof = clonePrefab(roofPrefab)
 		if roof then
 			roof.Name = "Roof"
+			local roofSize = getModelSize(roof)
+			local roofHeight = 8 + (roofSize.Y / 2)
+			
 			roof.Parent = building
 			anchorModel(roof)
-			setModelCFrame(roof, baseCFrame * CFrame.new(0, 12, 0))
+			setModelCFrame(roof, baseCFrame * CFrame.new(0, roofHeight, 0))
 		end
 	end
 	
@@ -391,22 +474,28 @@ local function createBuilding(position, angle, buildingIndex)
 		local door = clonePrefab(doorPrefab)
 		if door then
 			door.Name = "Door"
+			local doorSize = getModelSize(door)
+			local doorHeight = 0.5 + (doorSize.Y / 2)
+			
 			door.Parent = building
 			anchorModel(door)
-			setModelCFrame(door, baseCFrame * CFrame.new(0, 3, -8.5))
+			setModelCFrame(door, baseCFrame * CFrame.new(0, doorHeight, -8.5))
 		end
 	end
 	
 	-- Fenêtres
 	local windowPrefab = getRandomPrefabFromCategory("Windows")
 	if windowPrefab then
+		local windowSize = getModelSize(windowPrefab)
+		local windowHeight = 3 + (windowSize.Y / 2)
+		
 		for i = 1, 3 do
 			local window = clonePrefab(windowPrefab)
 			if window then
 				window.Name = "Window_" .. i
 				window.Parent = building
 				anchorModel(window)
-				local windowOffset = CFrame.new((i-2) * 5, 6, -8.5)
+				local windowOffset = CFrame.new((i-2) * 5, windowHeight, -8.5)
 				setModelCFrame(window, baseCFrame * windowOffset)
 			end
 		end
@@ -467,22 +556,28 @@ local function createFortifications()
 		if gatePrefab then
 			local gate = clonePrefab(gatePrefab)
 			if gate then
+				local gateSize = getModelSize(gate)
+				local yPosition = 0.5 + (gateSize.Y / 2)
+				
 				gate.Parent = gateModel
 				anchorModel(gate)
-				setModelCFrame(gate, CFrame.new(doorData.pos) * CFrame.Angles(0, doorData.rot, 0))
+				setModelCFrame(gate, CFrame.new(doorData.pos.X, yPosition, doorData.pos.Z) * CFrame.Angles(0, doorData.rot, 0))
 			end
 		end
 		
 		-- Piliers de chaque côté
 		local pillarPrefab = getRandomPrefabFromCategory("Pillars")
 		if pillarPrefab then
+			local pillarSize = getModelSize(pillarPrefab)
+			local yPosition = 0.5 + (pillarSize.Y / 2)
+			
 			local leftPillar = clonePrefab(pillarPrefab)
 			if leftPillar then
 				leftPillar.Name = "LeftPillar"
 				leftPillar.Parent = gateModel
 				anchorModel(leftPillar)
 				local leftOffset = CFrame.new(-8, 0, 0)
-				setModelCFrame(leftPillar, CFrame.new(doorData.pos) * CFrame.Angles(0, doorData.rot, 0) * leftOffset)
+				setModelCFrame(leftPillar, CFrame.new(doorData.pos.X, yPosition, doorData.pos.Z) * CFrame.Angles(0, doorData.rot, 0) * leftOffset)
 			end
 			
 			local rightPillar = clonePrefab(pillarPrefab)
@@ -491,7 +586,7 @@ local function createFortifications()
 				rightPillar.Parent = gateModel
 				anchorModel(rightPillar)
 				local rightOffset = CFrame.new(8, 0, 0)
-				setModelCFrame(rightPillar, CFrame.new(doorData.pos) * CFrame.Angles(0, doorData.rot, 0) * rightOffset)
+				setModelCFrame(rightPillar, CFrame.new(doorData.pos.X, yPosition, doorData.pos.Z) * CFrame.Angles(0, doorData.rot, 0) * rightOffset)
 			end
 		end
 	end
@@ -544,9 +639,13 @@ local function createCentralSquare()
 			local bench = clonePrefab(benchPrefab)
 			if bench then
 				bench.Name = "Bench_" .. i
+				
+				local benchSize = getModelSize(bench)
+				local yPosition = 0.5 + (benchSize.Y / 2)
+				
 				bench.Parent = squareFolder
 				anchorModel(bench)
-				setModelCFrame(bench, CFrame.new(x, 1, z) * CFrame.Angles(0, -angle, 0))
+				setModelCFrame(bench, CFrame.new(x, yPosition, z) * CFrame.Angles(0, -angle, 0))
 			end
 		end
 	end
@@ -565,9 +664,13 @@ local function createCentralSquare()
 				local barrel = clonePrefab(barrelPrefab)
 				if barrel then
 					barrel.Name = "Barrel_" .. i
+					
+					local barrelSize = getModelSize(barrel)
+					local yPosition = 0.5 + (barrelSize.Y / 2)
+					
 					barrel.Parent = squareFolder
 					anchorModel(barrel)
-					setModelPosition(barrel, Vector3.new(x, 0, z))
+					setModelPosition(barrel, Vector3.new(x, yPosition, z))
 				end
 			end
 		end
@@ -579,27 +682,48 @@ local function createCentralSquare()
 				local lamp = clonePrefab(lampPrefab)
 				if lamp then
 					lamp.Name = "Lamp_" .. i
+					
+					local lampSize = getModelSize(lamp)
+					local yPosition = 0.5 + (lampSize.Y / 2)
+					
 					lamp.Parent = squareFolder
 					anchorModel(lamp)
-					setModelPosition(lamp, Vector3.new(x, 0, z))
+					setModelPosition(lamp, Vector3.new(x, yPosition, z))
 					
 					-- Ajout d'une lumière si pas déjà présente
 					local hasLight = false
-					for _, desc in ipairs(lamp:GetDescendants()) do
-						if desc:IsA("PointLight") or desc:IsA("SpotLight") then
-							hasLight = true
-							break
+					if lamp:IsA("BasePart") then
+						for _, child in ipairs(lamp:GetChildren()) do
+							if child:IsA("PointLight") or child:IsA("SpotLight") then
+								hasLight = true
+								break
+							end
 						end
-					end
-					
-					if not hasLight then
-						local lampPart = lamp:FindFirstChildWhichIsA("BasePart")
-						if lampPart then
+						
+						if not hasLight then
 							local lampLight = Instance.new("PointLight")
 							lampLight.Brightness = 2
 							lampLight.Range = 35
 							lampLight.Color = Color3.fromRGB(255, 220, 150)
-							lampLight.Parent = lampPart
+							lampLight.Parent = lamp
+						end
+					elseif lamp:IsA("Model") then
+						for _, desc in ipairs(lamp:GetDescendants()) do
+							if desc:IsA("PointLight") or desc:IsA("SpotLight") then
+								hasLight = true
+								break
+							end
+						end
+						
+						if not hasLight then
+							local lampPart = lamp:FindFirstChildWhichIsA("BasePart")
+							if lampPart then
+								local lampLight = Instance.new("PointLight")
+								lampLight.Brightness = 2
+								lampLight.Range = 35
+								lampLight.Color = Color3.fromRGB(255, 220, 150)
+								lampLight.Parent = lampPart
+							end
 						end
 					end
 				end
@@ -679,7 +803,7 @@ local function generateWorld()
 		categorizePrefabs()
 	else
 		warn("WorldBuilder: AUCUN PREFAB DÉTECTÉ - Génération impossible")
-		return
+		-- Ne pas retourner, continuer avec les éléments procéduraux
 	end
 	
 	-- Génération du terrain
