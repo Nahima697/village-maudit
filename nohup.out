@@ -8,3 +8,4 @@ and modify your project's source. Prefer binding to localhost and tunneling (e.g
 Tailscale, or WireGuard) when you need remote access.
 [0m
 [0mVisit [0m[1m[32mhttp://0.0.0.0:34872/[0m in your browser for more information.
+[ERROR librojo::web::api] WebSocket error: WebSocket protocol error: Connection reset without closing handshake
