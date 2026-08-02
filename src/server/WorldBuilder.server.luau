@@ -2,6 +2,8 @@
     WorldBuilder.server.luau
     Génère le monde en utilisant les prefabs de ReplicatedStorage
     et tague automatiquement les arbres et rochers pour la récolte
+    
+    ADAPTATION : Fonctionne avec un dossier Prefabs PLAT (pas de sous-dossiers)
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -22,7 +24,43 @@ local CONFIG = {
 }
 
 -- ========================================
--- UTILITAIRES PREFABS
+-- SYSTÈME DE CATÉGORISATION DES PREFABS
+-- ========================================
+
+-- Patterns de détection pour catégoriser les prefabs
+local PREFAB_PATTERNS = {
+	-- Nature
+	Trees = {"tree", "oak", "pine", "birch", "sapin", "arbre"},
+	Bushes = {"bush", "buisson", "shrub"},
+	Grass = {"grass", "herbe", "weed"},
+	Rocks = {"rock", "stone", "boulder", "rocher", "pierre"},
+	
+	-- Bâtiments - Structure
+	Walls = {"wall", "mur"},
+	Roofs = {"roof", "toit"},
+	Floors = {"floor", "sol", "ground"},
+	Pillars = {"pillar", "column", "colonne", "poteau"},
+	
+	-- Bâtiments - Ouvertures
+	Doors = {"door", "porte"},
+	Windows = {"window", "fenetre", "fenêtre"},
+	Gates = {"gate", "portail", "entrance"},
+	
+	-- Décoration
+	Barrels = {"barrel", "tonneau", "crate", "caisse"},
+	Benches = {"bench", "banc", "seat"},
+	Lamps = {"lamp", "lampe", "lantern", "lanterne", "light"},
+	Fences = {"fence", "barriere", "barrière"},
+	
+	-- Autres
+	Signs = {"sign", "panneau", "board"}
+}
+
+-- Cache des prefabs catégorisés
+local PrefabCache = {}
+
+-- ========================================
+-- UTILITAIRES PREFABS - SYSTÈME PLAT
 -- ========================================
 
 local function getPrefabsFolder()
@@ -34,17 +72,68 @@ local function getPrefabsFolder()
 	return prefabsFolder
 end
 
-local function findPrefabsByPattern(pattern)
-	local prefabsFolder = getPrefabsFolder()
-	if not prefabsFolder then return {} end
-	
-	local matches = {}
-	for _, child in ipairs(prefabsFolder:GetChildren()) do
-		if string.find(string.lower(child.Name), string.lower(pattern)) then
-			table.insert(matches, child)
+local function matchesPattern(name, patterns)
+	local lowerName = string.lower(name)
+	for _, pattern in ipairs(patterns) do
+		if string.find(lowerName, pattern) then
+			return true
 		end
 	end
-	return matches
+	return false
+end
+
+local function categorizePrefabs()
+	local prefabsFolder = getPrefabsFolder()
+	if not prefabsFolder then return end
+	
+	-- Initialisation du cache
+	for category, _ in pairs(PREFAB_PATTERNS) do
+		PrefabCache[category] = {}
+	end
+	PrefabCache.Uncategorized = {}
+	
+	-- Parcours PLAT de tous les prefabs
+	for _, prefab in ipairs(prefabsFolder:GetChildren()) do
+		local categorized = false
+		
+		-- Tenter de catégoriser le prefab
+		for category, patterns in pairs(PREFAB_PATTERNS) do
+			if matchesPattern(prefab.Name, patterns) then
+				table.insert(PrefabCache[category], prefab)
+				categorized = true
+				break
+			end
+		end
+		
+		-- Si aucune catégorie trouvée
+		if not categorized then
+			table.insert(PrefabCache.Uncategorized, prefab)
+		end
+	end
+	
+	-- Rapport de catégorisation
+	print("========================================")
+	print("WorldBuilder: CATÉGORISATION DES PREFABS")
+	print("========================================")
+	for category, prefabs in pairs(PrefabCache) do
+		if #prefabs > 0 then
+			print(string.format("  %s: %d prefab(s)", category, #prefabs))
+			for _, prefab in ipairs(prefabs) do
+				print(string.format("    - %s", prefab.Name))
+			end
+		end
+	end
+	print("========================================")
+end
+
+local function getPrefabsByCategory(category)
+	return PrefabCache[category] or {}
+end
+
+local function getRandomPrefabFromCategory(category)
+	local prefabs = getPrefabsByCategory(category)
+	if #prefabs == 0 then return nil end
+	return prefabs[math.random(1, #prefabs)]
 end
 
 local function clonePrefab(prefab)
@@ -133,13 +222,11 @@ local function generateForest()
 		treesFolder:ClearAllChildren()
 	end
 	
-	-- Récupération des prefabs
-	local treePrefabs = findPrefabsByPattern("tree")
-	local bushPrefabs = findPrefabsByPattern("bush")
-	local grassPrefabs = findPrefabsByPattern("grass")
+	local treePrefabs = getPrefabsByCategory("Trees")
+	local bushPrefabs = getPrefabsByCategory("Bushes")
+	local grassPrefabs = getPrefabsByCategory("Grass")
 	
-	print("WorldBuilder: Trouvé " .. #treePrefabs .. " prefabs d'arbres")
-	print("WorldBuilder: Trouvé " .. #bushPrefabs .. " prefabs de buissons")
+	print(string.format("WorldBuilder: Génération forêt avec %d types d'arbres", #treePrefabs))
 	
 	for i = 1, CONFIG.TREE_COUNT do
 		local angle = math.random() * math.pi * 2
@@ -149,31 +236,50 @@ local function generateForest()
 		local position = Vector3.new(x, 0.5, z)
 		
 		-- Placement d'un arbre
-		if #treePrefabs > 0 then
-			local randomTree = treePrefabs[math.random(1, #treePrefabs)]
-			local tree = clonePrefab(randomTree)
+		local treePrefab = getRandomPrefabFromCategory("Trees")
+		if treePrefab then
+			local tree = clonePrefab(treePrefab)
 			
 			if tree then
 				tree.Name = "Tree_" .. i
 				tree.Parent = treesFolder
 				anchorModel(tree)
-				setModelPosition(tree, position + Vector3.new(0, 0, 0))
+				setModelPosition(tree, position)
 				tagModelAsCollectable(tree, "Wood")
 			end
 		end
 		
 		-- Décoration : buissons
-		if math.random() < CONFIG.DECORATION_DENSITY and #bushPrefabs > 0 then
-			local randomBush = bushPrefabs[math.random(1, #bushPrefabs)]
-			local bush = clonePrefab(randomBush)
-			
-			if bush then
-				bush.Name = "Bush_" .. i
-				bush.Parent = treesFolder
-				anchorModel(bush)
-				local offsetX = math.random(-8, 8)
-				local offsetZ = math.random(-8, 8)
-				setModelPosition(bush, position + Vector3.new(offsetX, 0, offsetZ))
+		if math.random() < CONFIG.DECORATION_DENSITY then
+			local bushPrefab = getRandomPrefabFromCategory("Bushes")
+			if bushPrefab then
+				local bush = clonePrefab(bushPrefab)
+				
+				if bush then
+					bush.Name = "Bush_" .. i
+					bush.Parent = treesFolder
+					anchorModel(bush)
+					local offsetX = math.random(-8, 8)
+					local offsetZ = math.random(-8, 8)
+					setModelPosition(bush, position + Vector3.new(offsetX, 0, offsetZ))
+				end
+			end
+		end
+		
+		-- Décoration : herbes
+		if math.random() < CONFIG.DECORATION_DENSITY * 0.5 then
+			local grassPrefab = getRandomPrefabFromCategory("Grass")
+			if grassPrefab then
+				local grass = clonePrefab(grassPrefab)
+				
+				if grass then
+					grass.Name = "Grass_" .. i
+					grass.Parent = treesFolder
+					anchorModel(grass)
+					local offsetX = math.random(-5, 5)
+					local offsetZ = math.random(-5, 5)
+					setModelPosition(grass, position + Vector3.new(offsetX, 0, offsetZ))
+				end
 			end
 		end
 	end
@@ -195,12 +301,9 @@ local function generateRocks()
 		rocksFolder:ClearAllChildren()
 	end
 	
-	local rockPrefabs = findPrefabsByPattern("rock")
-	if #rockPrefabs == 0 then
-		rockPrefabs = findPrefabsByPattern("stone")
-	end
+	local rockPrefabs = getPrefabsByCategory("Rocks")
 	
-	print("WorldBuilder: Trouvé " .. #rockPrefabs .. " prefabs de rochers")
+	print(string.format("WorldBuilder: Génération rochers avec %d types", #rockPrefabs))
 	
 	for i = 1, CONFIG.ROCK_COUNT do
 		local angle = math.random() * math.pi * 2
@@ -209,9 +312,9 @@ local function generateRocks()
 		local z = math.sin(angle) * distance
 		local position = Vector3.new(x, 0, z)
 		
-		if #rockPrefabs > 0 then
-			local randomRock = rockPrefabs[math.random(1, #rockPrefabs)]
-			local rock = clonePrefab(randomRock)
+		local rockPrefab = getRandomPrefabFromCategory("Rocks")
+		if rockPrefab then
+			local rock = clonePrefab(rockPrefab)
 			
 			if rock then
 				rock.Name = "Rock_" .. i
@@ -235,18 +338,12 @@ local function createBuilding(position, angle, buildingIndex)
 	local building = Instance.new("Model")
 	building.Name = "Building_" .. buildingIndex
 	
-	-- Récupération des prefabs de construction
-	local wallPrefabs = findPrefabsByPattern("wall")
-	local roofPrefabs = findPrefabsByPattern("roof")
-	local floorPrefabs = findPrefabsByPattern("floor")
-	local doorPrefabs = findPrefabsByPattern("door")
-	local windowPrefabs = findPrefabsByPattern("window")
-	
 	local baseCFrame = CFrame.new(position) * CFrame.Angles(0, angle, 0)
 	
 	-- Sol
-	if #floorPrefabs > 0 then
-		local floor = clonePrefab(floorPrefabs[1])
+	local floorPrefab = getRandomPrefabFromCategory("Floors")
+	if floorPrefab then
+		local floor = clonePrefab(floorPrefab)
 		if floor then
 			floor.Name = "Floor"
 			floor.Parent = building
@@ -256,8 +353,8 @@ local function createBuilding(position, angle, buildingIndex)
 	end
 	
 	-- Murs (4 côtés)
-	if #wallPrefabs > 0 then
-		local wallPrefab = wallPrefabs[1]
+	local wallPrefab = getRandomPrefabFromCategory("Walls")
+	if wallPrefab then
 		local wallPositions = {
 			{offset = CFrame.new(0, 6, -8), rotation = 0},
 			{offset = CFrame.new(8, 6, 0), rotation = math.pi/2},
@@ -277,8 +374,9 @@ local function createBuilding(position, angle, buildingIndex)
 	end
 	
 	-- Toit
-	if #roofPrefabs > 0 then
-		local roof = clonePrefab(roofPrefabs[1])
+	local roofPrefab = getRandomPrefabFromCategory("Roofs")
+	if roofPrefab then
+		local roof = clonePrefab(roofPrefab)
 		if roof then
 			roof.Name = "Roof"
 			roof.Parent = building
@@ -288,8 +386,9 @@ local function createBuilding(position, angle, buildingIndex)
 	end
 	
 	-- Porte (sur le mur avant)
-	if #doorPrefabs > 0 then
-		local door = clonePrefab(doorPrefabs[1])
+	local doorPrefab = getRandomPrefabFromCategory("Doors")
+	if doorPrefab then
+		local door = clonePrefab(doorPrefab)
 		if door then
 			door.Name = "Door"
 			door.Parent = building
@@ -299,9 +398,10 @@ local function createBuilding(position, angle, buildingIndex)
 	end
 	
 	-- Fenêtres
-	if #windowPrefabs > 0 then
+	local windowPrefab = getRandomPrefabFromCategory("Windows")
+	if windowPrefab then
 		for i = 1, 3 do
-			local window = clonePrefab(windowPrefabs[1])
+			local window = clonePrefab(windowPrefab)
 			if window then
 				window.Name = "Window_" .. i
 				window.Parent = building
@@ -350,9 +450,6 @@ local function createFortifications()
 	fortFolder.Name = "Fortifications"
 	fortFolder.Parent = villageFolder
 	
-	local gatePrefabs = findPrefabsByPattern("gate")
-	local pillarPrefabs = findPrefabsByPattern("pillar")
-	
 	local doorPositions = {
 		{name = "Gate_North", pos = Vector3.new(0, 0, -75), rot = 0},
 		{name = "Gate_East", pos = Vector3.new(75, 0, 0), rot = math.pi / 2},
@@ -365,8 +462,10 @@ local function createFortifications()
 		gateModel.Name = doorData.name
 		gateModel.Parent = fortFolder
 		
-		if #gatePrefabs > 0 then
-			local gate = clonePrefab(gatePrefabs[1])
+		-- Portail central
+		local gatePrefab = getRandomPrefabFromCategory("Gates")
+		if gatePrefab then
+			local gate = clonePrefab(gatePrefab)
 			if gate then
 				gate.Parent = gateModel
 				anchorModel(gate)
@@ -375,9 +474,8 @@ local function createFortifications()
 		end
 		
 		-- Piliers de chaque côté
-		if #pillarPrefabs > 0 then
-			local pillarPrefab = pillarPrefabs[1]
-			
+		local pillarPrefab = getRandomPrefabFromCategory("Pillars")
+		if pillarPrefab then
 			local leftPillar = clonePrefab(pillarPrefab)
 			if leftPillar then
 				leftPillar.Name = "LeftPillar"
@@ -411,10 +509,6 @@ local function createCentralSquare()
 	squareFolder.Name = "CentralSquare"
 	squareFolder.Parent = villageFolder
 	
-	local barrelPrefabs = findPrefabsByPattern("barrel")
-	local benchPrefabs = findPrefabsByPattern("bench")
-	local lampPrefabs = findPrefabsByPattern("lamp")
-	
 	-- Feu de camp central
 	local campfire = Instance.new("Part")
 	campfire.Name = "Campfire"
@@ -445,8 +539,9 @@ local function createCentralSquare()
 		local x = math.cos(angle) * distance
 		local z = math.sin(angle) * distance
 		
-		if #benchPrefabs > 0 then
-			local bench = clonePrefab(benchPrefabs[1])
+		local benchPrefab = getRandomPrefabFromCategory("Benches")
+		if benchPrefab then
+			local bench = clonePrefab(benchPrefab)
 			if bench then
 				bench.Name = "Bench_" .. i
 				bench.Parent = squareFolder
@@ -464,42 +559,48 @@ local function createCentralSquare()
 		local z = math.sin(angle) * distance
 		
 		-- Barils
-		if #barrelPrefabs > 0 and i % 2 == 1 then
-			local barrel = clonePrefab(barrelPrefabs[1])
-			if barrel then
-				barrel.Name = "Barrel_" .. i
-				barrel.Parent = squareFolder
-				anchorModel(barrel)
-				setModelPosition(barrel, Vector3.new(x, 0, z))
+		if i % 2 == 1 then
+			local barrelPrefab = getRandomPrefabFromCategory("Barrels")
+			if barrelPrefab then
+				local barrel = clonePrefab(barrelPrefab)
+				if barrel then
+					barrel.Name = "Barrel_" .. i
+					barrel.Parent = squareFolder
+					anchorModel(barrel)
+					setModelPosition(barrel, Vector3.new(x, 0, z))
+				end
 			end
 		end
 		
 		-- Lampadaires
-		if #lampPrefabs > 0 and i % 2 == 0 then
-			local lamp = clonePrefab(lampPrefabs[1])
-			if lamp then
-				lamp.Name = "Lamp_" .. i
-				lamp.Parent = squareFolder
-				anchorModel(lamp)
-				setModelPosition(lamp, Vector3.new(x, 0, z))
-				
-				-- Ajout d'une lumière si pas déjà présente
-				local hasLight = false
-				for _, desc in ipairs(lamp:GetDescendants()) do
-					if desc:IsA("PointLight") or desc:IsA("SpotLight") then
-						hasLight = true
-						break
+		if i % 2 == 0 then
+			local lampPrefab = getRandomPrefabFromCategory("Lamps")
+			if lampPrefab then
+				local lamp = clonePrefab(lampPrefab)
+				if lamp then
+					lamp.Name = "Lamp_" .. i
+					lamp.Parent = squareFolder
+					anchorModel(lamp)
+					setModelPosition(lamp, Vector3.new(x, 0, z))
+					
+					-- Ajout d'une lumière si pas déjà présente
+					local hasLight = false
+					for _, desc in ipairs(lamp:GetDescendants()) do
+						if desc:IsA("PointLight") or desc:IsA("SpotLight") then
+							hasLight = true
+							break
+						end
 					end
-				end
-				
-				if not hasLight then
-					local lampPart = lamp:FindFirstChildWhichIsA("BasePart")
-					if lampPart then
-						local lampLight = Instance.new("PointLight")
-						lampLight.Brightness = 2
-						lampLight.Range = 35
-						lampLight.Color = Color3.fromRGB(255, 220, 150)
-						lampLight.Parent = lampPart
+					
+					if not hasLight then
+						local lampPart = lamp:FindFirstChildWhichIsA("BasePart")
+						if lampPart then
+							local lampLight = Instance.new("PointLight")
+							lampLight.Brightness = 2
+							lampLight.Range = 35
+							lampLight.Color = Color3.fromRGB(255, 220, 150)
+							lampLight.Parent = lampPart
+						end
 					end
 				end
 			end
@@ -568,13 +669,17 @@ local function generateWorld()
 	print("WorldBuilder: DÉBUT DE LA GÉNÉRATION DU MONDE")
 	print("========================================")
 	
-	-- Vérification des Prefabs
+	-- Vérification et catégorisation des Prefabs
 	local prefabsFolder = getPrefabsFolder()
 	if prefabsFolder then
 		local prefabCount = #prefabsFolder:GetChildren()
-		print("WorldBuilder: " .. prefabCount .. " prefabs détectés")
+		print("WorldBuilder: " .. prefabCount .. " prefabs détectés (dossier PLAT)")
+		
+		-- Catégorisation automatique
+		categorizePrefabs()
 	else
 		warn("WorldBuilder: AUCUN PREFAB DÉTECTÉ - Génération impossible")
+		return
 	end
 	
 	-- Génération du terrain
