@@ -46,6 +46,9 @@ local NightStartEvent = createRemoteEvent("NightStart")
 local DayStartEvent = createRemoteEvent("DayStart")
 local GameEndEvent = createRemoteEvent("GameEnd")
 
+-- 🔧 FIX #1 : Création du RemoteEvent manquant pour le système de craft
+local CollectResourceEvent = createRemoteEvent("CollectResourceEvent")
+
 -- VALIDATION CRITIQUE : Vérifier que tous les events sont créés
 assert(AssignRoleEvent, "[CRASH PREVENTION] AssignRoleEvent est nil")
 assert(DayStartEvent, "[CRASH PREVENTION] DayStartEvent est nil")
@@ -54,8 +57,9 @@ assert(VoteStartEvent, "[CRASH PREVENTION] VoteStartEvent est nil")
 assert(VoteEndEvent, "[CRASH PREVENTION] VoteEndEvent est nil")
 assert(GameEndEvent, "[CRASH PREVENTION] GameEndEvent est nil")
 assert(GameStateUpdateEvent, "[CRASH PREVENTION] GameStateUpdateEvent est nil")
+assert(CollectResourceEvent, "[CRASH PREVENTION] CollectResourceEvent est nil")
 
-print("[GameManager] ✅ Tous les RemoteEvents validés")
+print("[GameManager] ✅ Tous les RemoteEvents validés (incluant CollectResourceEvent)")
 
 -- Création du dossier SharedData pour les attributs globaux
 local sharedData = ReplicatedStorage:FindFirstChild("SharedData")
@@ -98,6 +102,9 @@ local nightCount = 0
 local phaseTimeRemaining = 0
 local alivePlayers = {}
 local playerRoles = {} -- Table {[Player] = "Innocent" | "Traitor"}
+
+-- 🔧 FIX #3 : Variable pour tracker si la première nuit est passée
+local firstNightCompleted = false
 
 -- ============================================================
 -- SECTION 4 : FONCTIONS UTILITAIRES
@@ -165,13 +172,16 @@ end
 -- Démarre la phase de jour
 local function startDayPhase()
 	updatePhaseAttribute("Day")
-	nightCount = nightCount + 1
-	sharedData:SetAttribute("NightCount", nightCount)
 	
 	local dayDuration = PHASE_DURATION.Day or 120
 	updateTimeAttribute(dayDuration)
 	
-	broadcastMessage("☀️ Le jour se lève ! Discutez pour trouver les traîtres.", Color3.fromRGB(255, 200, 100))
+	-- 🔧 FIX #3 : Message différent selon si c'est le premier jour
+	if not firstNightCompleted then
+		broadcastMessage("☀️ Premier jour ! Préparez-vous pour la nuit à venir...", Color3.fromRGB(255, 200, 100))
+	else
+		broadcastMessage("☀️ Le jour se lève ! Discutez pour trouver les traîtres.", Color3.fromRGB(255, 200, 100))
+	end
 	
 	-- FIX CRITIQUE : Vérification avant appel
 	if DayStartEvent then
@@ -189,7 +199,13 @@ local function startDayPhase()
 	end
 	
 	if gameActive then
-		startVotingPhase()
+		-- 🔧 FIX #3 : Ne lance le vote QUE si la première nuit est terminée
+		if firstNightCompleted then
+			startVotingPhase()
+		else
+			-- Passe directement à la nuit si c'est le premier jour
+			startNightPhase()
+		end
 	end
 end
 
@@ -224,10 +240,18 @@ end
 local function startNightPhase()
 	updatePhaseAttribute("Night")
 	
+	nightCount = nightCount + 1
+	sharedData:SetAttribute("NightCount", nightCount)
+	
 	local nightDuration = PHASE_DURATION.Night or 90
 	updateTimeAttribute(nightDuration)
 	
-	broadcastMessage("🌙 La nuit tombe... Les traîtres agissent dans l'ombre.", Color3.fromRGB(50, 50, 150))
+	-- 🔧 FIX #3 : Message différent pour la première nuit
+	if not firstNightCompleted then
+		broadcastMessage("🌙 Première nuit... Les traîtres découvrent leur pouvoir.", Color3.fromRGB(50, 50, 150))
+	else
+		broadcastMessage("🌙 La nuit tombe... Les traîtres agissent dans l'ombre.", Color3.fromRGB(50, 50, 150))
+	end
 	
 	-- FIX CRITIQUE : Vérification avant appel
 	if NightStartEvent then
@@ -242,6 +266,12 @@ local function startNightPhase()
 		local remaining = nightDuration - (tick() - startTime)
 		updateTimeAttribute(remaining)
 		task.wait(1)
+	end
+	
+	-- 🔧 FIX #3 : Marquer la première nuit comme terminée
+	if not firstNightCompleted then
+		firstNightCompleted = true
+		print("[GameManager] 🌙 Première nuit terminée, votes activés pour les prochains jours")
 	end
 	
 	if gameActive then
@@ -278,7 +308,7 @@ local function checkWinConditions()
 end
 
 -- Termine le jeu
-local function endGame(winner)
+function endGame(winner)
 	gameActive = false
 	updatePhaseAttribute("End")
 	sharedData:SetAttribute("GameActive", false)
@@ -344,7 +374,7 @@ local function initializePlayers()
 	return true
 end
 
-local function startGame()
+function startGame()
 	if gameActive then
 		warn("[GameManager] Une partie est déjà en cours")
 		return
@@ -353,6 +383,7 @@ local function startGame()
 	print("[GameManager] Démarrage d'une nouvelle partie...")
 	
 	nightCount = 0
+	firstNightCompleted = false -- 🔧 FIX #3 : Reset du flag
 	sharedData:SetAttribute("NightCount", 0)
 	
 	if not initializePlayers() then
@@ -366,16 +397,19 @@ local function startGame()
 	broadcastMessage("🎮 La partie commence ! Survivez aux nuits...", Color3.fromRGB(0, 255, 0))
 	
 	task.wait(5)
+	
+	-- 🔧 FIX #3 : Commencer par un JOUR (sans vote possible)
 	startDayPhase()
 end
 
-local function resetGame()
+function resetGame()
 	gameActive = false
 	currentPhase = "Waiting"
 	nightCount = 0
 	phaseTimeRemaining = 0
 	alivePlayers = {}
 	playerRoles = {}
+	firstNightCompleted = false -- 🔧 FIX #3 : Reset du flag
 	
 	updatePhaseAttribute("Waiting")
 	sharedData:SetAttribute("NightCount", 0)
@@ -386,7 +420,7 @@ local function resetGame()
 	waitForPlayers()
 end
 
-local function waitForPlayers()
+function waitForPlayers()
 	updatePhaseAttribute("Waiting")
 	
 	while true do
@@ -460,5 +494,6 @@ end)
 print("[GameManager] Initialisation complète ✅")
 print("[GameManager] Configuration : Day=" .. (PHASE_DURATION.Day or 0) .. "s, Night=" .. (PHASE_DURATION.Night or 0) .. "s, Vote=" .. (PHASE_DURATION.Voting or 0) .. "s")
 print("[GameManager] Min joueurs :", MIN_PLAYERS or 3)
+print("[GameManager] 🔧 Cycle de jeu : Jour → Nuit (1ère) → Jour → Vote → Nuit → Jour → Vote...")
 
 waitForPlayers()

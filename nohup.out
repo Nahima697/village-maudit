@@ -1,0 +1,10 @@
+Rojo server listening:
+  Address: [0m[1m[32m0.0.0.0
+[0m  Port:    [0m[1m[32m34872
+
+[0m[1m[33mWARNING: This server is bound to 0.0.0.0, which is reachable from the network.
+The serve API is unauthenticated, so anyone who can reach 0.0.0.0:34872 can read
+and modify your project's source. Prefer binding to localhost and tunneling (e.g. SSH,
+Tailscale, or WireGuard) when you need remote access.
+[0m
+[0mVisit [0m[1m[32mhttp://0.0.0.0:34872/[0m in your browser for more information.
