@@ -14,23 +14,25 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local CONFIG = {
 	VILLAGE_RADIUS = 45,
-	VILLAGE_BUILDING_COUNT = 8,
+	VILLAGE_BUILDING_COUNT = 12,
 	
-	FOREST_MIN_RADIUS = 60,
+	FOREST_MIN_RADIUS = 65,
 	FOREST_MAX_RADIUS = 180,
-	TREE_COUNT = 200,
+	TREE_COUNT = 250,
+	TREE_CLUSTER_CHANCE = 0.3, -- 30% de chance de spawn en groupe
 	
-	ROCK_COUNT = 50,
+	ROCK_COUNT = 60,
 	ROCK_MIN_RADIUS = 50,
 	ROCK_MAX_RADIUS = 170,
 	
-	MONSTER_SPAWN_COUNT = 12,
+	MONSTER_SPAWN_COUNT = 15,
 	MONSTER_SPAWN_RADIUS = 160,
 	
 	RAYCAST_HEIGHT = 500,
 	RAYCAST_DISTANCE = 1000,
 	
 	GENERATE_REPORT = true,
+	VERBOSE_LOGGING = true,
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -53,44 +55,46 @@ local AssetInventory = {
 local CategoryPatterns = {
 	Buildings = {
 		"house", "building", "tower", "tavern", "hut", "shed", "barn", 
-		"cottage", "cabin", "chapel", "shop", "home", "dwelling"
+		"cottage", "cabin", "chapel", "shop", "home", "dwelling", "structure"
 	},
 	Walls = {
 		"wall", "pillar", "fence", "column", "post", "barrier", 
-		"palisade", "stockade", "rampart"
+		"palisade", "stockade", "rampart", "panel"
 	},
 	Roofs = {
-		"roof", "ceiling", "holecover", "top", "thatch", "shingle"
+		"roof", "ceiling", "holecover", "top", "thatch", "shingle", "cover"
 	},
 	Floors = {
 		"floor", "ground", "foundation", "path", "base", "platform",
-		"tile", "paving", "cobble"
+		"tile", "paving", "cobble", "plank"
 	},
 	Doors = {
-		"door", "gate", "window", "entrance", "portal", "hatch"
+		"door", "gate", "window", "entrance", "portal", "hatch", "opening"
 	},
 	Trees = {
 		"tree", "pine", "oak", "birch", "willow", "bush", "shrub",
-		"plant", "fern", "grass", "foliage", "trunk", "branch"
+		"plant", "fern", "grass", "foliage", "trunk", "branch", "leaves"
 	},
 	Rocks = {
-		"rock", "stone", "boulder", "pebble", "cliff", "mountain"
+		"rock", "stone", "boulder", "pebble", "cliff", "mountain", "outcrop"
 	},
 	Decorations = {
 		"lantern", "torch", "banner", "flag", "carpet", "rug",
-		"furniture", "table", "chair", "bench", "barrel", "crate"
+		"furniture", "table", "chair", "bench", "barrel", "crate", "pot"
 	},
 	Props = {
-		"tool", "weapon", "item", "object", "prop", "misc"
+		"tool", "weapon", "item", "object", "prop", "misc", "detail"
 	}
 }
 
--- Scan récursif de tous les dossiers
+-- Scan récursif de tous les dossiers et sous-dossiers
 local function scanFolderRecursive(folder, assetList)
 	for _, child in ipairs(folder:GetChildren()) do
+		-- Accepte Models, MeshParts, Parts et UnionOperations
 		if child:IsA("Model") or child:IsA("MeshPart") or child:IsA("Part") or child:IsA("UnionOperation") then
 			table.insert(assetList, child)
 		elseif child:IsA("Folder") then
+			-- Descend récursivement dans les sous-dossiers
 			scanFolderRecursive(child, assetList)
 		end
 	end
@@ -157,7 +161,7 @@ local function generateInventoryReport()
 	print("[WorldBuilder] 📝 Génération du rapport d'inventaire...")
 	
 	local report = {
-		"# 📋 Asset Inventory Report",
+		"# 📋 ASSET INVENTORY REPORT",
 		"",
 		"**Generated:** " .. os.date("%Y-%m-%d %H:%M:%S"),
 		"**Source:** ReplicatedStorage.Prefabs",
@@ -174,7 +178,7 @@ local function generateInventoryReport()
 			table.insert(report, string.format("## %s (%d)", category, #assets))
 			table.insert(report, "")
 			
-			-- Liste des assets
+			-- Liste des assets avec détails
 			for i, asset in ipairs(assets) do
 				local assetType = asset.ClassName
 				local path = asset:GetFullName():gsub("%.ReplicatedStorage%.Prefabs%.", "")
@@ -188,10 +192,15 @@ local function generateInventoryReport()
 	-- Statistiques globales
 	table.insert(report, "---")
 	table.insert(report, "")
-	table.insert(report, "## 📊 Statistiques Globales")
+	table.insert(report, "## 📊 STATISTIQUES GLOBALES")
 	table.insert(report, "")
 	table.insert(report, string.format("- **Total Assets:** %d", totalAssets))
-	table.insert(report, string.format("- **Catégories:** %d", 10))
+	
+	local categoryCount = 0
+	for category, assets in pairs(AssetInventory) do
+		if #assets > 0 then categoryCount = categoryCount + 1 end
+	end
+	table.insert(report, string.format("- **Catégories actives:** %d/10", categoryCount))
 	table.insert(report, "")
 	
 	local reportText = table.concat(report, "\n")
@@ -207,9 +216,12 @@ local function generateInventoryReport()
 	reportValue.Parent = reportFolder
 	
 	print("[WorldBuilder] ✅ Rapport sauvegardé dans ServerStorage.Reports.AssetInventory")
-	print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	print(reportText)
-	print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	
+	if CONFIG.VERBOSE_LOGGING then
+		print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		print(reportText)
+		print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	end
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -269,11 +281,12 @@ local function prepareAssetForWorld(asset)
 		for _, descendant in ipairs(asset:GetDescendants()) do
 			if descendant:IsA("BasePart") then
 				descendant.Anchored = true
-				descendant.CanCollide = true
 				
 				-- Préservation de la transparence originale si c'est un élément décoratif
 				if descendant.Transparency >= 0.95 then
 					descendant.CanCollide = false
+				else
+					descendant.CanCollide = true
 				end
 			end
 		end
@@ -292,9 +305,9 @@ local function spawnAsset(prefab, position, rotation, parentFolder)
 	local clone = prefab:Clone()
 	prepareAssetForWorld(clone)
 	
-	-- Placement précis
+	-- Placement précis avec PivotTo pour Models et CFrame pour BaseParts
 	if clone:IsA("Model") then
-		local pivot = clone:GetPivot()
+		-- Calcul du CFrame final avec rotation
 		local newCFrame = CFrame.new(position) * CFrame.Angles(0, rotation, 0)
 		clone:PivotTo(newCFrame)
 	elseif clone:IsA("BasePart") then
@@ -307,7 +320,7 @@ end
 
 local function getRandomAsset(category)
 	local assets = AssetInventory[category]
-	if #assets == 0 then return nil end
+	if not assets or #assets == 0 then return nil end
 	return assets[math.random(1, #assets)]
 end
 
@@ -323,14 +336,16 @@ local function generateVillage()
 	villageFolder.Parent = workspace
 	
 	local buildingsPlaced = 0
+	local modularBuildings = 0
 	
 	for i = 1, CONFIG.VILLAGE_BUILDING_COUNT do
 		local angle = (i - 1) * (math.pi * 2 / CONFIG.VILLAGE_BUILDING_COUNT)
 		local x = math.cos(angle) * CONFIG.VILLAGE_RADIUS
 		local z = math.sin(angle) * CONFIG.VILLAGE_RADIUS
 		
+		-- Raycast pour placement précis
 		local position, normal = getGroundPositionPrecise(x, z, 0)
-		local rotation = angle + math.pi -- Face vers le centre
+		local rotation = angle + math.pi -- Face vers le centre du village
 		
 		-- Essai de placement d'un bâtiment complet
 		local building = getRandomAsset("Buildings")
@@ -339,9 +354,13 @@ local function generateVillage()
 			if placed then
 				placed.Name = "Building_" .. i
 				buildingsPlaced = buildingsPlaced + 1
+				
+				if CONFIG.VERBOSE_LOGGING then
+					print(string.format("  ✓ Bâtiment %d placé: %s", i, building.Name))
+				end
 			end
 		else
-			-- Construction modulaire si pas de bâtiment complet
+			-- Construction modulaire si pas de bâtiment complet disponible
 			local buildingModel = Instance.new("Model")
 			buildingModel.Name = "ModularBuilding_" .. i
 			buildingModel.Parent = villageFolder
@@ -349,16 +368,43 @@ local function generateVillage()
 			local floor = getRandomAsset("Floors")
 			local wall = getRandomAsset("Walls")
 			local roof = getRandomAsset("Roofs")
+			local door = getRandomAsset("Doors")
 			
-			if floor then spawnAsset(floor, position, rotation, buildingModel) end
-			if wall then spawnAsset(wall, position + Vector3.new(0, 2, 0), rotation, buildingModel) end
-			if roof then spawnAsset(roof, position + Vector3.new(0, 5, 0), rotation, buildingModel) end
+			-- Placement du sol
+			if floor then 
+				spawnAsset(floor, position, rotation, buildingModel) 
+			end
 			
+			-- Placement des murs (4 côtés)
+			if wall then
+				for side = 0, 3 do
+					local wallAngle = rotation + (side * math.pi / 2)
+					local wallOffset = Vector3.new(math.cos(wallAngle) * 3, 2, math.sin(wallAngle) * 3)
+					spawnAsset(wall, position + wallOffset, wallAngle, buildingModel)
+				end
+			end
+			
+			-- Placement du toit
+			if roof then 
+				spawnAsset(roof, position + Vector3.new(0, 5, 0), rotation, buildingModel) 
+			end
+			
+			-- Placement de la porte
+			if door then
+				spawnAsset(door, position + Vector3.new(0, 1, -3), rotation, buildingModel)
+			end
+			
+			modularBuildings = modularBuildings + 1
 			buildingsPlaced = buildingsPlaced + 1
+			
+			if CONFIG.VERBOSE_LOGGING then
+				print(string.format("  ✓ Bâtiment modulaire %d construit", i))
+			end
 		end
 	end
 	
-	print(string.format("[WorldBuilder] ✅ Village généré : %d bâtiments", buildingsPlaced))
+	print(string.format("[WorldBuilder] ✅ Village généré : %d bâtiments (%d modulaires)", 
+		buildingsPlaced, modularBuildings))
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -372,12 +418,13 @@ local function generateForest()
 	treesFolder.Name = "Trees"
 	treesFolder.Parent = workspace
 	
-	local treesPlaced = 0
-	
 	if #AssetInventory.Trees == 0 then
 		warn("[WorldBuilder] ⚠️ Aucun arbre trouvé dans l'inventaire!")
 		return
 	end
+	
+	local treesPlaced = 0
+	local clusterCount = 0
 	
 	for i = 1, CONFIG.TREE_COUNT do
 		local angle = math.random() * math.pi * 2
@@ -386,7 +433,8 @@ local function generateForest()
 		local x = math.cos(angle) * distance
 		local z = math.sin(angle) * distance
 		
-		local position = getGroundPositionPrecise(x, z, 0)
+		-- Raycast pour placement précis sur le terrain
+		local position, normal = getGroundPositionPrecise(x, z, 0)
 		local rotation = math.random() * math.pi * 2
 		
 		local tree = getRandomAsset("Trees")
@@ -395,11 +443,35 @@ local function generateForest()
 			if placed then
 				placed.Name = "Tree_" .. i
 				treesPlaced = treesPlaced + 1
+				
+				-- Génération de clusters (groupes d'arbres)
+				if math.random() < CONFIG.TREE_CLUSTER_CHANCE then
+					for j = 1, math.random(2, 4) do
+						local clusterOffsetAngle = math.random() * math.pi * 2
+						local clusterOffsetDistance = math.random(3, 8)
+						
+						local clusterX = x + math.cos(clusterOffsetAngle) * clusterOffsetDistance
+						local clusterZ = z + math.sin(clusterOffsetAngle) * clusterOffsetDistance
+						
+						local clusterPos = getGroundPositionPrecise(clusterX, clusterZ, 0)
+						local clusterTree = getRandomAsset("Trees")
+						
+						if clusterTree then
+							local clusterPlaced = spawnAsset(clusterTree, clusterPos, math.random() * math.pi * 2, treesFolder)
+							if clusterPlaced then
+								clusterPlaced.Name = "Tree_Cluster_" .. i .. "_" .. j
+								treesPlaced = treesPlaced + 1
+							end
+						end
+					end
+					clusterCount = clusterCount + 1
+				end
 			end
 		end
 	end
 	
-	print(string.format("[WorldBuilder] ✅ Forêt générée : %d arbres", treesPlaced))
+	print(string.format("[WorldBuilder] ✅ Forêt générée : %d arbres (%d clusters)", 
+		treesPlaced, clusterCount))
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -413,12 +485,12 @@ local function generateRocks()
 	rocksFolder.Name = "Rocks"
 	rocksFolder.Parent = workspace
 	
-	local rocksPlaced = 0
-	
 	if #AssetInventory.Rocks == 0 then
 		warn("[WorldBuilder] ⚠️ Aucun rocher trouvé dans l'inventaire!")
 		return
 	end
+	
+	local rocksPlaced = 0
 	
 	for i = 1, CONFIG.ROCK_COUNT do
 		local angle = math.random() * math.pi * 2
@@ -427,7 +499,8 @@ local function generateRocks()
 		local x = math.cos(angle) * distance
 		local z = math.sin(angle) * distance
 		
-		local position = getGroundPositionPrecise(x, z, 0)
+		-- Raycast pour placement précis sur le terrain
+		local position, normal = getGroundPositionPrecise(x, z, 0)
 		local rotation = math.random() * math.pi * 2
 		
 		local rock = getRandomAsset("Rocks")
@@ -436,6 +509,15 @@ local function generateRocks()
 			if placed then
 				placed.Name = "Rock_" .. i
 				rocksPlaced = rocksPlaced + 1
+				
+				-- Variation d'échelle pour plus de réalisme
+				if placed:IsA("Model") then
+					local scale = 0.7 + math.random() * 0.6 -- 0.7 à 1.3
+					placed:ScaleTo(scale)
+				elseif placed:IsA("BasePart") then
+					local scale = 0.7 + math.random() * 0.6
+					placed.Size = placed.Size * scale
+				end
 			end
 		end
 	end
@@ -459,12 +541,13 @@ local function generateMonsterSpawns()
 		local x = math.cos(angle) * CONFIG.MONSTER_SPAWN_RADIUS
 		local z = math.sin(angle) * CONFIG.MONSTER_SPAWN_RADIUS
 		
-		local position = getGroundPositionPrecise(x, z, 0.5)
+		-- Raycast pour placement précis
+		local position, normal = getGroundPositionPrecise(x, z, 0.5)
 		
 		local spawn = Instance.new("Part")
 		spawn.Name = "MonsterSpawn_" .. i
 		spawn.Size = Vector3.new(5, 1, 5)
-		spawn.Position = position
+		spawn.CFrame = CFrame.new(position)
 		spawn.Anchored = true
 		spawn.Transparency = 0.8
 		spawn.CanCollide = false
@@ -472,10 +555,15 @@ local function generateMonsterSpawns()
 		spawn.Material = Enum.Material.Neon
 		spawn.Parent = spawnFolder
 		
+		-- Tag pour identification par MonsterSpawner
 		CollectionService:AddTag(spawn, "MonsterSpawnPoint")
+		
+		-- Ajout d'un attribut pour la configuration
+		spawn:SetAttribute("SpawnRadius", 10)
+		spawn:SetAttribute("MaxMonsters", 3)
 	end
 	
-	print(string.format("[WorldBuilder] ✅ Spawns générés : %d", CONFIG.MONSTER_SPAWN_COUNT))
+	print(string.format("[WorldBuilder] ✅ Spawns générés : %d points", CONFIG.MONSTER_SPAWN_COUNT))
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -486,48 +574,62 @@ local function cleanupPreviousWorld()
 	print("[WorldBuilder] 🧹 Nettoyage du monde précédent...")
 	
 	local foldersToClean = {"Village", "Trees", "Rocks", "MonsterSpawns", "Decorations", "GiantTreeHub"}
+	local cleanedCount = 0
+	
 	for _, folderName in ipairs(foldersToClean) do
 		local existing = workspace:FindFirstChild(folderName)
 		if existing then
 			existing:Destroy()
+			cleanedCount = cleanedCount + 1
 		end
 	end
+	
+	print(string.format("[WorldBuilder] ✅ %d dossiers nettoyés", cleanedCount))
 end
 
 local function generateWorld()
+	local startTime = tick()
+	
 	print("════════════════════════════════════════════════════════════════")
 	print("          🌍 WORLDBUILDER - GÉNÉRATION PROCÉDURALE 🌍")
 	print("════════════════════════════════════════════════════════════════")
 	
-	-- Phase 1 : Scan et inventaire
+	-- Phase 1 : Scan et inventaire des assets
 	local scanSuccess = buildAssetInventory()
 	if not scanSuccess then
 		error("[WorldBuilder] ❌ Échec du scan des assets, génération annulée.")
 	end
 	
-	-- Phase 2 : Génération du rapport
+	-- Phase 2 : Génération du rapport d'inventaire
 	generateInventoryReport()
 	
-	-- Phase 3 : Nettoyage
+	-- Phase 3 : Nettoyage du monde existant
 	cleanupPreviousWorld()
 	
 	-- Phase 4 : Génération du monde
-	wait(0.5)
+	print("[WorldBuilder] 🏗️ Début de la génération du monde...")
+	
+	task.wait(0.5)
 	generateVillage()
-	wait(0.5)
+	
+	task.wait(0.5)
 	generateForest()
-	wait(0.5)
+	
+	task.wait(0.5)
 	generateRocks()
-	wait(0.5)
+	
+	task.wait(0.5)
 	generateMonsterSpawns()
 	
+	local elapsedTime = tick() - startTime
+	
 	print("════════════════════════════════════════════════════════════════")
-	print("          ✅ MONDE GÉNÉRÉ AVEC SUCCÈS !")
+	print(string.format("          ✅ MONDE GÉNÉRÉ AVEC SUCCÈS EN %.2fs !", elapsedTime))
 	print("════════════════════════════════════════════════════════════════")
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- EXÉCUTION
+-- EXÉCUTION AU DÉMARRAGE
 -- ═══════════════════════════════════════════════════════════════════════════
 
 generateWorld()
