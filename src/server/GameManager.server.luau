@@ -16,21 +16,25 @@ if not remoteEventsFolder then
 	remoteEventsFolder = Instance.new("Folder")
 	remoteEventsFolder.Name = "RemoteEvents"
 	remoteEventsFolder.Parent = ReplicatedStorage
+	warn("[GameManager] Dossier RemoteEvents créé")
 end
 
--- Création de TOUS les RemoteEvents nécessaires
+-- Création de TOUS les RemoteEvents nécessaires avec vérification stricte
 local function createRemoteEvent(name)
 	local existingEvent = remoteEventsFolder:FindFirstChild(name)
-	if existingEvent then
+	if existingEvent and existingEvent:IsA("RemoteEvent") then
+		print("[GameManager] RemoteEvent existant réutilisé :", name)
 		return existingEvent
 	end
+	
 	local remoteEvent = Instance.new("RemoteEvent")
 	remoteEvent.Name = name
 	remoteEvent.Parent = remoteEventsFolder
+	print("[GameManager] RemoteEvent créé :", name)
 	return remoteEvent
 end
 
--- Liste exhaustive des RemoteEvents du jeu
+-- Liste exhaustive des RemoteEvents du jeu (AVEC VALIDATION)
 local AssignRoleEvent = createRemoteEvent("AssignRole")
 local TraitorSabotageEvent = createRemoteEvent("TraitorSabotage")
 local PhaseChangeEvent = createRemoteEvent("PhaseChange")
@@ -41,6 +45,17 @@ local GameStateUpdateEvent = createRemoteEvent("GameStateUpdate")
 local NightStartEvent = createRemoteEvent("NightStart")
 local DayStartEvent = createRemoteEvent("DayStart")
 local GameEndEvent = createRemoteEvent("GameEnd")
+
+-- VALIDATION CRITIQUE : Vérifier que tous les events sont créés
+assert(AssignRoleEvent, "[CRASH PREVENTION] AssignRoleEvent est nil")
+assert(DayStartEvent, "[CRASH PREVENTION] DayStartEvent est nil")
+assert(NightStartEvent, "[CRASH PREVENTION] NightStartEvent est nil")
+assert(VoteStartEvent, "[CRASH PREVENTION] VoteStartEvent est nil")
+assert(VoteEndEvent, "[CRASH PREVENTION] VoteEndEvent est nil")
+assert(GameEndEvent, "[CRASH PREVENTION] GameEndEvent est nil")
+assert(GameStateUpdateEvent, "[CRASH PREVENTION] GameStateUpdateEvent est nil")
+
+print("[GameManager] ✅ Tous les RemoteEvents validés")
 
 -- Création du dossier SharedData pour les attributs globaux
 local sharedData = ReplicatedStorage:FindFirstChild("SharedData")
@@ -125,8 +140,6 @@ end
 local function broadcastMessage(message, color)
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player:FindFirstChild("PlayerGui") then
-			-- On envoie via un RemoteEvent dédié si nécessaire
-			-- Ou on utilise un système de chat personnalisé
 			print("[BROADCAST]", player.Name, ":", message)
 		end
 	end
@@ -136,11 +149,12 @@ end
 local function updatePhaseAttribute(newPhase)
 	currentPhase = newPhase
 	sharedData:SetAttribute("CurrentPhase", newPhase)
+	PhaseChangeEvent:FireAllClients(newPhase)
 end
 
 -- Met à jour le temps restant dans SharedData
 local function updateTimeAttribute(timeRemaining)
-	phaseTimeRemaining = math.max(0, timeRemaining or 0) -- SÉCURISATION : jamais nil
+	phaseTimeRemaining = math.max(0, timeRemaining or 0)
 	sharedData:SetAttribute("PhaseTimeRemaining", phaseTimeRemaining)
 end
 
@@ -154,11 +168,17 @@ local function startDayPhase()
 	nightCount = nightCount + 1
 	sharedData:SetAttribute("NightCount", nightCount)
 	
-	local dayDuration = PHASE_DURATION.Day or 120 -- SÉCURISATION
+	local dayDuration = PHASE_DURATION.Day or 120
 	updateTimeAttribute(dayDuration)
 	
 	broadcastMessage("☀️ Le jour se lève ! Discutez pour trouver les traîtres.", Color3.fromRGB(255, 200, 100))
-	DayStartEvent:FireAllClients(dayDuration)
+	
+	-- FIX CRITIQUE : Vérification avant appel
+	if DayStartEvent then
+		DayStartEvent:FireAllClients(dayDuration)
+	else
+		warn("[CRASH PREVENTED] DayStartEvent est nil à la ligne 172")
+	end
 	
 	-- Timer de phase
 	local startTime = tick()
@@ -177,18 +197,24 @@ end
 local function startVotingPhase()
 	updatePhaseAttribute("Voting")
 	
-	local voteDuration = PHASE_DURATION.Voting or 60 -- SÉCURISATION
+	local voteDuration = PHASE_DURATION.Voting or 60
 	updateTimeAttribute(voteDuration)
 	
 	broadcastMessage("🗳️ Phase de vote ! Désignez un suspect.", Color3.fromRGB(100, 150, 255))
-	VoteStartEvent:FireAllClients(voteDuration)
 	
-	-- Le VotingSystem va gérer le vote, on attend juste la durée
+	-- FIX CRITIQUE : Vérification avant appel
+	if VoteStartEvent then
+		VoteStartEvent:FireAllClients(voteDuration)
+	else
+		warn("[CRASH PREVENTED] VoteStartEvent est nil")
+	end
+	
 	task.wait(voteDuration)
 	
 	if gameActive then
-		VoteEndEvent:FireAllClients()
-		-- Attendre que le VotingSystem traite le résultat
+		if VoteEndEvent then
+			VoteEndEvent:FireAllClients()
+		end
 		task.wait(5)
 		startNightPhase()
 	end
@@ -198,11 +224,17 @@ end
 local function startNightPhase()
 	updatePhaseAttribute("Night")
 	
-	local nightDuration = PHASE_DURATION.Night or 90 -- SÉCURISATION
+	local nightDuration = PHASE_DURATION.Night or 90
 	updateTimeAttribute(nightDuration)
 	
 	broadcastMessage("🌙 La nuit tombe... Les traîtres agissent dans l'ombre.", Color3.fromRGB(50, 50, 150))
-	NightStartEvent:FireAllClients(nightDuration)
+	
+	-- FIX CRITIQUE : Vérification avant appel
+	if NightStartEvent then
+		NightStartEvent:FireAllClients(nightDuration)
+	else
+		warn("[CRASH PREVENTED] NightStartEvent est nil")
+	end
 	
 	-- Timer de phase
 	local startTime = tick()
@@ -226,24 +258,20 @@ local function checkWinConditions()
 	local traitorCount = countAliveTraitors()
 	local innocentCount = countAliveInnocents()
 	
-	-- SÉCURISATION : Vérifier que les valeurs ne sont pas nil
 	aliveCount = aliveCount or 0
 	traitorCount = traitorCount or 0
 	innocentCount = innocentCount or 0
 	
-	-- Les innocents gagnent si tous les traîtres sont éliminés
 	if traitorCount <= 0 then
 		endGame("Innocents")
 		return
 	end
 	
-	-- Les traîtres gagnent s'ils sont en nombre égal ou supérieur aux innocents
 	if traitorCount >= innocentCount then
 		endGame("Traitors")
 		return
 	end
 	
-	-- Sinon, le jeu continue
 	if gameActive then
 		startDayPhase()
 	end
@@ -265,9 +293,11 @@ local function endGame(winner)
 	end
 	
 	broadcastMessage(message, Color3.fromRGB(255, 255, 0))
-	GameEndEvent:FireAllClients(winner)
 	
-	-- Attendre avant de réinitialiser
+	if GameEndEvent then
+		GameEndEvent:FireAllClients(winner)
+	end
+	
 	task.wait(10)
 	resetGame()
 end
@@ -276,7 +306,6 @@ end
 -- SECTION 7 : DÉMARRAGE ET RÉINITIALISATION
 -- ============================================================
 
--- Initialise les joueurs pour une nouvelle partie
 local function initializePlayers()
 	alivePlayers = {}
 	playerRoles = {}
@@ -284,16 +313,13 @@ local function initializePlayers()
 	local playerList = Players:GetPlayers()
 	local playerCount = #playerList
 	
-	-- SÉCURISATION : Vérifier qu'il y a assez de joueurs
 	if playerCount < (MIN_PLAYERS or 3) then
 		warn("[GameManager] Pas assez de joueurs pour démarrer")
 		return false
 	end
 	
-	-- Calculer le nombre de traîtres (environ 25% des joueurs, minimum 1)
 	local traitorCount = math.max(1, math.floor(playerCount * 0.25))
 	
-	-- Mélanger la liste des joueurs
 	local shuffledPlayers = {}
 	for i, player in ipairs(playerList) do
 		shuffledPlayers[i] = player
@@ -304,21 +330,20 @@ local function initializePlayers()
 		shuffledPlayers[i], shuffledPlayers[j] = shuffledPlayers[j], shuffledPlayers[i]
 	end
 	
-	-- Assigner les rôles
 	for i, player in ipairs(shuffledPlayers) do
 		local role = (i <= traitorCount) and "Traitor" or "Innocent"
 		playerRoles[player] = role
 		alivePlayers[player] = true
 		
-		-- Notifier le joueur de son rôle
-		AssignRoleEvent:FireClient(player, role)
+		if AssignRoleEvent then
+			AssignRoleEvent:FireClient(player, role)
+		end
 		print("[GameManager] Rôle assigné :", player.Name, "=", role)
 	end
 	
 	return true
 end
 
--- Démarre une nouvelle partie
 local function startGame()
 	if gameActive then
 		warn("[GameManager] Une partie est déjà en cours")
@@ -327,11 +352,9 @@ local function startGame()
 	
 	print("[GameManager] Démarrage d'une nouvelle partie...")
 	
-	-- Réinitialiser les compteurs
 	nightCount = 0
 	sharedData:SetAttribute("NightCount", 0)
 	
-	-- Initialiser les joueurs
 	if not initializePlayers() then
 		warn("[GameManager] Échec de l'initialisation des joueurs")
 		return
@@ -342,14 +365,10 @@ local function startGame()
 	
 	broadcastMessage("🎮 La partie commence ! Survivez aux nuits...", Color3.fromRGB(0, 255, 0))
 	
-	-- Attendre quelques secondes avant de commencer la première phase
 	task.wait(5)
-	
-	-- Démarrer par le jour
 	startDayPhase()
 end
 
--- Réinitialise le jeu
 local function resetGame()
 	gameActive = false
 	currentPhase = "Waiting"
@@ -367,22 +386,19 @@ local function resetGame()
 	waitForPlayers()
 end
 
--- Attendre suffisamment de joueurs pour démarrer
 local function waitForPlayers()
 	updatePhaseAttribute("Waiting")
 	
 	while true do
 		local playerCount = #Players:GetPlayers()
-		local minPlayers = MIN_PLAYERS or 3 -- SÉCURISATION
+		local minPlayers = MIN_PLAYERS or 3
 		
-		-- CORRECTION LIGNE 218 : Sécurisation de la comparaison
-		playerCount = playerCount or 0 -- S'assurer que playerCount n'est jamais nil
+		playerCount = playerCount or 0
 		
 		if playerCount >= minPlayers then
 			broadcastMessage("✅ Joueurs suffisants ! Démarrage dans " .. LOBBY_WAIT_TIME .. " secondes...", Color3.fromRGB(0, 255, 0))
-			task.wait(LOBBY_WAIT_TIME or 15) -- SÉCURISATION
+			task.wait(LOBBY_WAIT_TIME or 15)
 			
-			-- Vérifier à nouveau avant de démarrer
 			if #Players:GetPlayers() >= minPlayers then
 				startGame()
 				break
@@ -390,7 +406,6 @@ local function waitForPlayers()
 				broadcastMessage("⚠️ Pas assez de joueurs, attente...", Color3.fromRGB(255, 100, 0))
 			end
 		else
-			-- Attendre plus de joueurs
 			task.wait(5)
 		end
 	end
@@ -400,41 +415,36 @@ end
 -- SECTION 8 : GESTION DES JOUEURS (CONNEXION/DÉCONNEXION)
 -- ============================================================
 
--- Quand un joueur rejoint
 Players.PlayerAdded:Connect(function(player)
 	print("[GameManager] Joueur connecté :", player.Name)
 	
-	-- Si une partie est en cours, le marquer comme spectateur
 	if gameActive then
 		alivePlayers[player] = false
 		playerRoles[player] = "Spectator"
 	end
 	
-	-- Envoyer l'état actuel du jeu
-	GameStateUpdateEvent:FireClient(player, {
-		Phase = currentPhase,
-		NightCount = nightCount,
-		TimeRemaining = phaseTimeRemaining or 0, -- SÉCURISATION
-		IsAlive = alivePlayers[player] or false
-	})
+	if GameStateUpdateEvent then
+		GameStateUpdateEvent:FireClient(player, {
+			Phase = currentPhase,
+			NightCount = nightCount,
+			TimeRemaining = phaseTimeRemaining or 0,
+			IsAlive = alivePlayers[player] or false
+		})
+	end
 end)
 
--- Quand un joueur quitte
 Players.PlayerRemoving:Connect(function(player)
 	print("[GameManager] Joueur déconnecté :", player.Name)
 	
-	-- Retirer le joueur des tables
 	if alivePlayers[player] then
 		alivePlayers[player] = false
 	end
 	playerRoles[player] = nil
 	
-	-- Vérifier les conditions de victoire si une partie est en cours
 	if gameActive then
-		task.wait(1) -- Petit délai pour éviter les race conditions
-		local aliveCount = countAlivePlayers() or 0 -- SÉCURISATION
+		task.wait(1)
+		local aliveCount = countAlivePlayers() or 0
 		
-		-- Si plus assez de joueurs, terminer la partie
 		if aliveCount < 2 then
 			endGame("None")
 		else
@@ -451,5 +461,4 @@ print("[GameManager] Initialisation complète ✅")
 print("[GameManager] Configuration : Day=" .. (PHASE_DURATION.Day or 0) .. "s, Night=" .. (PHASE_DURATION.Night or 0) .. "s, Vote=" .. (PHASE_DURATION.Voting or 0) .. "s")
 print("[GameManager] Min joueurs :", MIN_PLAYERS or 3)
 
--- Lancer la boucle d'attente de joueurs
 waitForPlayers()
