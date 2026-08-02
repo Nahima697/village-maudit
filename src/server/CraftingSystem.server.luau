@@ -2,7 +2,10 @@
     CraftingSystem.server.luau
     Gère la collecte de ressources et le craft.
     Version modernisée avec support des pièges et objets physiques corrigés.
-    CORRECTIONS : Tools fonctionnels (Torche/Lance), objets visibles et clampés dans CraftZone
+    CORRECTIONS PHASE 2 :
+    - Auto-équipement des Tools (Torche/Lance)
+    - Système de prévisualisation pour structures (Ghost Part + Raycast)
+    - Placement confirmé au clic via RemoteEvent
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -32,6 +35,14 @@ if not craftItemEvent then
     craftItemEvent.Parent = remoteEventsFolder
 end
 
+-- Nouveau : Event pour confirmer le placement de structures
+local confirmPlacementEvent = remoteEventsFolder:FindFirstChild("ConfirmPlacementEvent")
+if not confirmPlacementEvent then
+    confirmPlacementEvent = Instance.new("RemoteEvent")
+    confirmPlacementEvent.Name = "ConfirmPlacementEvent"
+    confirmPlacementEvent.Parent = remoteEventsFolder
+end
+
 local sharedData = ReplicatedStorage:FindFirstChild("SharedData")
 if not sharedData then
     sharedData = Instance.new("Configuration")
@@ -47,8 +58,10 @@ local TRAP_DAMAGE = 25
 local TRAP_LIFETIME = 120
 local LANCE_DAMAGE = 25
 local GATE_REPAIR_AMOUNT = 100
+local PLACEMENT_MAX_RANGE = 30
 
 local collectCooldowns = {}
+local playerPendingPlacements = {} -- Stocke les structures en attente de placement
 
 -- === RECETTES DE CRAFT ===
 local CRAFT_RECIPES = {
@@ -92,6 +105,24 @@ local function clampPositionToCraftZone(position)
     local clampedZ = math.clamp(position.Z, zonePos.Z - halfSize.Z, zonePos.Z + halfSize.Z)
     
     return Vector3.new(clampedX, position.Y, clampedZ)
+end
+
+-- === FONCTION UTILITAIRE : RAYCAST AU SOL ===
+local function raycastToGround(origin)
+    local rayOrigin = origin + Vector3.new(0, 10, 0)
+    local rayDirection = Vector3.new(0, -50, 0)
+    
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterDescendantsInstances = {Workspace:FindFirstChild("Players")}
+    
+    local rayResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+    
+    if rayResult then
+        return rayResult.Position
+    else
+        return Vector3.new(origin.X, 0, origin.Z)
+    end
 end
 
 -- === INITIALISATION DES ATTRIBUTS JOUEURS ===
@@ -162,7 +193,10 @@ end)
 
 local function createBarricade(position, lookVector)
     -- Calcul de la position devant le joueur
-    local targetPosition = position + (lookVector * 5) + Vector3.new(0, 3, 0)
+    local targetPosition = position + (lookVector * 5)
+    
+    -- Raycast au sol
+    targetPosition = raycastToGround(targetPosition) + Vector3.new(0, 3, 0)
     
     -- Clamp dans la zone de craft
     targetPosition = clampPositionToCraftZone(targetPosition)
@@ -175,7 +209,7 @@ local function createBarricade(position, lookVector)
     barricade.BrickColor = BrickColor.new("Brown")
     barricade.Transparency = 0
     barricade.CanCollide = true
-    barricade.CFrame = CFrame.new(targetPosition)
+    barricade.CFrame = CFrame.new(targetPosition, targetPosition + lookVector)
     barricade.Parent = Workspace
     
     -- Ajout de textures visuelles
@@ -195,6 +229,8 @@ local function createBarricade(position, lookVector)
             barricade:Destroy()
         end
     end)
+    
+    return barricade
 end
 
 local function createTorch(player)
@@ -223,7 +259,7 @@ local function createTorch(player)
     light.Brightness = 2
     light.Range = 20
     light.Color = Color3.fromRGB(255, 180, 100)
-    light.Enabled = true
+    light.Enabled = false
     light.Parent = handle
     
     -- Activation de la lumière uniquement quand équipée
@@ -238,7 +274,17 @@ local function createTorch(player)
     end)
     
     tool.Parent = player.Backpack
-    print("[CraftingSystem] Torche créée pour", player.Name)
+    
+    -- AUTO-ÉQUIPEMENT : Équiper automatiquement l'outil
+    task.wait(0.1) -- Petit délai pour assurer que le tool est bien dans le Backpack
+    local character = player.Character
+    if character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid:EquipTool(tool)
+            print("[CraftingSystem] Torche créée et équipée pour", player.Name)
+        end
+    end
 end
 
 local function createLance(player)
@@ -299,9 +345,6 @@ local function createLance(player)
         
         attackCooldown = true
         
-        -- Animation visuelle de l'attaque
-        local originalCFrame = handle.CFrame
-        
         -- Détection des ennemis dans un rayon devant le joueur
         local attackRange = 8
         local attackOrigin = rootPart.Position + rootPart.CFrame.LookVector * 4
@@ -345,28 +388,25 @@ local function createLance(player)
     end)
     
     tool.Parent = player.Backpack
-    print("[CraftingSystem] Lance créée pour", player.Name)
+    
+    -- AUTO-ÉQUIPEMENT : Équiper automatiquement l'outil
+    task.wait(0.1)
+    local character = player.Character
+    if character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid:EquipTool(tool)
+            print("[CraftingSystem] Lance créée et équipée pour", player.Name)
+        end
+    end
 end
 
 local function createTrap(position, lookVector)
     -- Calcul de la position devant le joueur
     local targetPosition = position + (lookVector * 4)
     
-    -- Raycast pour trouver le sol
-    local rayOrigin = targetPosition + Vector3.new(0, 10, 0)
-    local rayDirection = Vector3.new(0, -20, 0)
-    
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    raycastParams.FilterDescendantsInstances = {Workspace:FindFirstChild("Players")}
-    
-    local rayResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-    
-    if rayResult then
-        targetPosition = rayResult.Position + Vector3.new(0, 0.25, 0)
-    else
-        targetPosition = Vector3.new(targetPosition.X, 0.25, targetPosition.Z)
-    end
+    -- Raycast au sol
+    targetPosition = raycastToGround(targetPosition) + Vector3.new(0, 0.25, 0)
     
     -- Clamp dans la zone de craft
     targetPosition = clampPositionToCraftZone(targetPosition)
@@ -431,6 +471,8 @@ local function createTrap(position, lookVector)
             trap:Destroy()
         end
     end)
+    
+    return trap
 end
 
 local function fortifyGate()
@@ -470,7 +512,6 @@ local function fortifyGate()
     
     -- Effet visuel de réparation : clignotement vert
     local originalColor = gatePart.BrickColor
-    local originalMaterial = gatePart.Material
     
     local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut, 3, true)
     local tween = TweenService:Create(gatePart, tweenInfo, {
@@ -513,7 +554,56 @@ local function fortifyGate()
     end)
 end
 
--- === SYSTÈME DE CRAFT ===
+-- === NOUVELLE FONCTION : CRÉER UN GHOST PART (PRÉVISUALISATION) ===
+local function createGhostPart(itemName, position, lookVector)
+    local ghost
+    
+    if itemName == "Barricade" then
+        ghost = Instance.new("Part")
+        ghost.Name = "GhostBarricade"
+        ghost.Size = Vector3.new(8, 6, 1)
+        ghost.Anchored = true
+        ghost.CanCollide = false
+        ghost.Material = Enum.Material.Neon
+        ghost.BrickColor = BrickColor.new("Cyan")
+        ghost.Transparency = 0.5
+        
+    elseif itemName == "Piege" then
+        ghost = Instance.new("Part")
+        ghost.Name = "GhostTrap"
+        ghost.Size = Vector3.new(6, 0.5, 6)
+        ghost.Anchored = true
+        ghost.CanCollide = false
+        ghost.Material = Enum.Material.Neon
+        ghost.BrickColor = BrickColor.new("Bright red")
+        ghost.Transparency = 0.5
+    end
+    
+    if ghost then
+        -- Position initiale devant le joueur
+        local targetPosition
+        if itemName == "Barricade" then
+            targetPosition = position + (lookVector * 5)
+            targetPosition = raycastToGround(targetPosition) + Vector3.new(0, 3, 0)
+            ghost.CFrame = CFrame.new(targetPosition, targetPosition + lookVector)
+        else
+            targetPosition = position + (lookVector * 4)
+            targetPosition = raycastToGround(targetPosition) + Vector3.new(0, 0.25, 0)
+            ghost.CFrame = CFrame.new(targetPosition)
+        end
+        
+        targetPosition = clampPositionToCraftZone(targetPosition)
+        ghost.Position = targetPosition
+        
+        ghost.Parent = Workspace
+        
+        print("[CraftingSystem] Ghost créé pour", itemName, "à", targetPosition)
+    end
+    
+    return ghost
+end
+
+-- === SYSTÈME DE CRAFT (MODIFIÉ POUR STRUCTURES) ===
 craftItemEvent.OnServerEvent:Connect(function(player, itemName)
     local recipe = CRAFT_RECIPES[itemName]
     if not recipe then
@@ -526,16 +616,16 @@ craftItemEvent.OnServerEvent:Connect(function(player, itemName)
     local stone = player:GetAttribute("Stone") or 0
     
     if wood < recipe.Wood or stone < recipe.Stone then
-        warn("[CraftingSystem] Ressources insuffisantes pour", itemName, "- Requis:", recipe.Wood, "bois,", recipe.Stone, "pierre - Disponible:", wood, "bois,", stone, "pierre")
+        warn("[CraftingSystem] Ressources insuffisantes pour", itemName)
         return
     end
     
-    -- Vérification du personnage (sauf pour Fortification qui ne nécessite pas de position)
+    -- Vérification du personnage
     local char = player.Character
     local rootPart = char and char:FindFirstChild("HumanoidRootPart")
     
     if itemName ~= "Fortification" and (not char or not rootPart) then
-        warn("[CraftingSystem] Personnage ou HumanoidRootPart introuvable pour", player.Name)
+        warn("[CraftingSystem] Personnage introuvable pour", player.Name)
         return
     end
     
@@ -544,27 +634,100 @@ craftItemEvent.OnServerEvent:Connect(function(player, itemName)
     player:SetAttribute("Stone", stone - recipe.Stone)
     
     -- Création de l'objet crafté
-    if itemName == "Barricade" then
-        if rootPart then
-            local position = rootPart.Position
-            local lookVector = rootPart.CFrame.LookVector
-            createBarricade(position, lookVector)
-        end
-    elseif itemName == "Torche" then
+    if itemName == "Torche" then
         createTorch(player)
+        
     elseif itemName == "Lance" then
         createLance(player)
-    elseif itemName == "Piege" then
+        
+    elseif itemName == "Fortification" then
+        fortifyGate()
+        
+    elseif itemName == "Barricade" or itemName == "Piege" then
+        -- MODE PLACEMENT : Créer un ghost et attendre confirmation
         if rootPart then
             local position = rootPart.Position
             local lookVector = rootPart.CFrame.LookVector
-            createTrap(position, lookVector)
+            
+            local ghost = createGhostPart(itemName, position, lookVector)
+            
+            if ghost then
+                -- Stocker les informations de placement
+                playerPendingPlacements[player.UserId] = {
+                    itemName = itemName,
+                    ghost = ghost,
+                    position = position,
+                    lookVector = lookVector
+                }
+                
+                print("[CraftingSystem] Mode placement activé pour", player.Name, "-", itemName)
+                
+                -- Auto-destruction du ghost après 10 secondes
+                task.delay(10, function()
+                    if ghost and ghost.Parent then
+                        ghost:Destroy()
+                    end
+                    playerPendingPlacements[player.UserId] = nil
+                end)
+            end
         end
-    elseif itemName == "Fortification" then
-        fortifyGate()
     end
     
     print("[CraftingSystem]", player.Name, "a crafté:", itemName)
 end)
 
-print("[CraftingSystem] ✓ Prêt - Recettes disponibles:", 5, "- CraftZone initialisée")
+-- === SYSTÈME DE CONFIRMATION DE PLACEMENT ===
+confirmPlacementEvent.OnServerEvent:Connect(function(player, targetPosition)
+    local pendingData = playerPendingPlacements[player.UserId]
+    
+    if not pendingData then
+        warn("[CraftingSystem] Aucun placement en attente pour", player.Name)
+        return
+    end
+    
+    local char = player.Character
+    local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+    
+    if not rootPart then
+        warn("[CraftingSystem] Personnage introuvable")
+        return
+    end
+    
+    -- Vérifier la distance
+    local distance = (rootPart.Position - targetPosition).Magnitude
+    if distance > PLACEMENT_MAX_RANGE then
+        warn("[CraftingSystem] Position trop éloignée pour", player.Name)
+        return
+    end
+    
+    -- Détruire le ghost
+    if pendingData.ghost and pendingData.ghost.Parent then
+        pendingData.ghost:Destroy()
+    end
+    
+    -- Créer l'objet final
+    local lookVector = (targetPosition - rootPart.Position).Unit
+    
+    if pendingData.itemName == "Barricade" then
+        createBarricade(rootPart.Position, lookVector)
+    elseif pendingData.itemName == "Piege" then
+        createTrap(rootPart.Position, lookVector)
+    end
+    
+    -- Nettoyer les données
+    playerPendingPlacements[player.UserId] = nil
+    
+    print("[CraftingSystem] Placement confirmé pour", player.Name, "-", pendingData.itemName)
+end)
+
+-- === NETTOYAGE À LA DÉCONNEXION ===
+Players.PlayerRemoving:Connect(function(player)
+    local pendingData = playerPendingPlacements[player.UserId]
+    if pendingData and pendingData.ghost and pendingData.ghost.Parent then
+        pendingData.ghost:Destroy()
+    end
+    playerPendingPlacements[player.UserId] = nil
+    collectCooldowns[player.UserId] = nil
+end)
+
+print("[CraftingSystem] ✓ Prêt - Recettes disponibles:", 5, "- Système de placement activé")
