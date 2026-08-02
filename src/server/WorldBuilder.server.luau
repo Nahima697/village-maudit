@@ -6,6 +6,7 @@
     ADAPTATION : Fonctionne avec des MeshParts/BaseParts directs (dossier plat)
     CORRECTION : Validation des tailles et positionnement explicite
     FIX : Instanciation profonde des bâtiments avec MeshParts visibles
+    VERSION 2 : Correction du positionnement relatif et espacement 3D des composants
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -29,7 +30,17 @@ local CONFIG = {
 	DEFAULT_ROCK_SIZE = Vector3.new(3, 3, 3),
 	DEFAULT_BUILDING_PART_SIZE = Vector3.new(4, 4, 4),
 	DEFAULT_DECORATION_SIZE = Vector3.new(2, 2, 2),
-	MIN_VALID_SIZE = 0.1  -- Taille minimum pour considérer un objet comme valide
+	MIN_VALID_SIZE = 0.1,  -- Taille minimum pour considérer un objet comme valide
+	
+	-- NOUVELLES CONSTANTES POUR L'ARCHITECTURE DES BÂTIMENTS
+	BUILDING_WIDTH = 16,  -- Largeur du bâtiment
+	BUILDING_DEPTH = 16,  -- Profondeur du bâtiment
+	BUILDING_HEIGHT = 8,  -- Hauteur des murs
+	FLOOR_HEIGHT = 0.5,   -- Épaisseur du sol
+	WALL_THICKNESS = 0.5, -- Épaisseur des murs
+	ROOF_HEIGHT = 3,      -- Hauteur du toit au-dessus des murs
+	DOOR_WIDTH = 3,       -- Largeur de la porte
+	WINDOW_SIZE = 2,      -- Taille des fenêtres
 }
 
 -- ========================================
@@ -237,6 +248,7 @@ local function clonePrefabDeep(prefab, category)
 				validateAndFixSize(descendant, category or "Uncategorized")
 				descendant.Anchored = true
 				descendant.Transparency = 0  -- FORCE la visibilité
+				descendant.CanCollide = true
 				
 				if descendant:IsA("MeshPart") then
 					if descendant.Material == Enum.Material.Plastic then
@@ -275,27 +287,6 @@ local function anchorModel(model)
 	end
 end
 
-local function setModelPosition(model, position)
-	-- GESTION SIMPLIFIÉE POUR MESHPARTS AVEC VALIDATION
-	if model:IsA("BasePart") then
-		-- Pour les MeshParts et autres BaseParts directs
-		-- Utiliser CFrame pour un positionnement précis
-		model.CFrame = CFrame.new(position)
-	elseif model:IsA("Model") then
-		if model.PrimaryPart then
-			model:SetPrimaryPartCFrame(CFrame.new(position))
-		else
-			local primaryPart = model:FindFirstChildWhichIsA("BasePart")
-			if primaryPart then
-				model.PrimaryPart = primaryPart
-				model:SetPrimaryPartCFrame(CFrame.new(position))
-			else
-				warn(string.format("WorldBuilder: Impossible de positionner %s - Aucune BasePart trouvée", model.Name))
-			end
-		end
-	end
-end
-
 local function setModelCFrame(model, cframe)
 	-- GESTION SIMPLIFIÉE POUR MESHPARTS AVEC VALIDATION
 	if model:IsA("BasePart") then
@@ -314,6 +305,10 @@ local function setModelCFrame(model, cframe)
 			end
 		end
 	end
+end
+
+local function setModelPosition(model, position)
+	setModelCFrame(model, CFrame.new(position))
 end
 
 local function tagModelAsCollectable(model, resourceType)
@@ -532,8 +527,53 @@ local function generateRocks()
 end
 
 -- ========================================
--- GÉNÉRATION VILLAGE (PREFABS) - COMPLÈTEMENT REFAIT
+-- GÉNÉRATION VILLAGE (PREFABS) - ARCHITECTURE 3D CORRIGÉE
 -- ========================================
+
+local function createBuildingComponent(prefabCategory, componentName, relativeCFrame, parent, buildingIndex)
+	-- Crée un composant de bâtiment avec un positionnement relatif précis
+	local prefab = getRandomPrefabFromCategory(prefabCategory)
+	if not prefab then
+		warn(string.format("  ✗ Aucun prefab %s trouvé", prefabCategory))
+		return nil
+	end
+	
+	local component = clonePrefabDeep(prefab, prefabCategory)
+	if not component then
+		warn(string.format("  ✗ Échec clonage %s", componentName))
+		return nil
+	end
+	
+	component.Name = componentName
+	
+	-- Configuration des propriétés AVANT positionnement
+	anchorModel(component)
+	
+	-- Appliquer la CFrame relative
+	setModelCFrame(component, relativeCFrame)
+	
+	-- Forcer la visibilité et les collisions
+	if component:IsA("BasePart") then
+		component.Transparency = 0
+		component.CanCollide = true
+		component.Anchored = true
+	elseif component:IsA("Model") then
+		for _, part in ipairs(component:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.Transparency = 0
+				part.CanCollide = true
+				part.Anchored = true
+			end
+		end
+	end
+	
+	-- Parenting
+	component.Parent = parent
+	
+	print(string.format("  ✓ %s ajouté à position relative: %s", componentName, tostring(relativeCFrame.Position)))
+	
+	return component
+end
 
 local function createBuilding(position, angle, buildingIndex)
 	print(string.format("--- Création Building_%d ---", buildingIndex))
@@ -541,134 +581,134 @@ local function createBuilding(position, angle, buildingIndex)
 	local building = Instance.new("Model")
 	building.Name = "Building_" .. buildingIndex
 	
+	-- CFrame de base du bâtiment (origine au centre, au sol)
 	local baseCFrame = CFrame.new(position) * CFrame.Angles(0, angle, 0)
 	
 	local partsCreated = 0
+	local componentsList = {}
 	
-	-- Sol
-	local floorPrefab = getRandomPrefabFromCategory("Floors")
-	if floorPrefab then
-		local floor = clonePrefabDeep(floorPrefab, "Floors")
-		if floor then
-			floor.Name = "Floor"
-			
-			local floorSize = getModelSize(floor)
-			local yOffset = 0.5 + (floorSize.Y / 2)
-			
-			anchorModel(floor)
-			setModelCFrame(floor, baseCFrame * CFrame.new(0, yOffset, 0))
-			
-			floor.Parent = building
-			partsCreated = partsCreated + 1
-			print(string.format("  ✓ Floor ajouté (Size: %s)", tostring(floorSize)))
-		else
-			warn("  ✗ Échec clonage Floor")
+	-- ====== SOL ======
+	-- Positionné au ras du sol
+	local floorY = CONFIG.FLOOR_HEIGHT / 2
+	local floorCFrame = baseCFrame * CFrame.new(0, floorY, 0)
+	
+	local floor = createBuildingComponent("Floors", "Floor", floorCFrame, building, buildingIndex)
+	if floor then
+		partsCreated = partsCreated + 1
+		table.insert(componentsList, floor)
+		
+		-- Forcer la taille du sol selon les dimensions du bâtiment
+		if floor:IsA("BasePart") then
+			floor.Size = Vector3.new(CONFIG.BUILDING_WIDTH, CONFIG.FLOOR_HEIGHT, CONFIG.BUILDING_DEPTH)
 		end
-	else
-		warn("  ✗ Aucun prefab Floor trouvé")
 	end
 	
-	-- Murs (4 côtés)
-	local wallPrefab = getRandomPrefabFromCategory("Walls")
-	if wallPrefab then
-		local wallSize = getModelSize(wallPrefab)
-		local wallHeight = 0.5 + 3 + (wallSize.Y / 2)
+	-- ====== MURS (4 côtés) ======
+	-- Hauteur du centre des murs
+	local wallCenterY = CONFIG.FLOOR_HEIGHT + (CONFIG.BUILDING_HEIGHT / 2)
+	
+	-- Mur Nord (devant, face -Z)
+	local wallNorthCFrame = baseCFrame * CFrame.new(0, wallCenterY, -CONFIG.BUILDING_DEPTH / 2)
+	local wallNorth = createBuildingComponent("Walls", "Wall_North", wallNorthCFrame, building, buildingIndex)
+	if wallNorth then
+		partsCreated = partsCreated + 1
+		table.insert(componentsList, wallNorth)
+		if wallNorth:IsA("BasePart") then
+			wallNorth.Size = Vector3.new(CONFIG.BUILDING_WIDTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
+		end
+	end
+	
+	-- Mur Sud (derrière, face +Z)
+	local wallSouthCFrame = baseCFrame * CFrame.new(0, wallCenterY, CONFIG.BUILDING_DEPTH / 2)
+	local wallSouth = createBuildingComponent("Walls", "Wall_South", wallSouthCFrame, building, buildingIndex)
+	if wallSouth then
+		partsCreated = partsCreated + 1
+		table.insert(componentsList, wallSouth)
+		if wallSouth:IsA("BasePart") then
+			wallSouth.Size = Vector3.new(CONFIG.BUILDING_WIDTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
+		end
+	end
+	
+	-- Mur Est (droite, face +X)
+	local wallEastCFrame = baseCFrame * CFrame.new(CONFIG.BUILDING_WIDTH / 2, wallCenterY, 0) * CFrame.Angles(0, math.pi / 2, 0)
+	local wallEast = createBuildingComponent("Walls", "Wall_East", wallEastCFrame, building, buildingIndex)
+	if wallEast then
+		partsCreated = partsCreated + 1
+		table.insert(componentsList, wallEast)
+		if wallEast:IsA("BasePart") then
+			wallEast.Size = Vector3.new(CONFIG.BUILDING_DEPTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
+		end
+	end
+	
+	-- Mur Ouest (gauche, face -X)
+	local wallWestCFrame = baseCFrame * CFrame.new(-CONFIG.BUILDING_WIDTH / 2, wallCenterY, 0) * CFrame.Angles(0, math.pi / 2, 0)
+	local wallWest = createBuildingComponent("Walls", "Wall_West", wallWestCFrame, building, buildingIndex)
+	if wallWest then
+		partsCreated = partsCreated + 1
+		table.insert(componentsList, wallWest)
+		if wallWest:IsA("BasePart") then
+			wallWest.Size = Vector3.new(CONFIG.BUILDING_DEPTH, CONFIG.BUILDING_HEIGHT, CONFIG.WALL_THICKNESS)
+		end
+	end
+	
+	-- ====== TOIT ======
+	-- Positionné au-dessus des murs
+	local roofY = CONFIG.FLOOR_HEIGHT + CONFIG.BUILDING_HEIGHT + (CONFIG.ROOF_HEIGHT / 2)
+	local roofCFrame = baseCFrame * CFrame.new(0, roofY, 0)
+	
+	local roof = createBuildingComponent("Roofs", "Roof", roofCFrame, building, buildingIndex)
+	if roof then
+		partsCreated = partsCreated + 1
+		table.insert(componentsList, roof)
+		if roof:IsA("BasePart") then
+			roof.Size = Vector3.new(CONFIG.BUILDING_WIDTH + 2, CONFIG.ROOF_HEIGHT, CONFIG.BUILDING_DEPTH + 2)
+		end
+	end
+	
+	-- ====== PORTE ======
+	-- Centrée sur le mur nord (devant), au ras du sol
+	local doorY = CONFIG.FLOOR_HEIGHT + (CONFIG.DOOR_WIDTH / 2)
+	local doorCFrame = baseCFrame * CFrame.new(0, doorY, -(CONFIG.BUILDING_DEPTH / 2 + 0.6))
+	
+	local door = createBuildingComponent("Doors", "Door", doorCFrame, building, buildingIndex)
+	if door then
+		partsCreated = partsCreated + 1
+		table.insert(componentsList, door)
+		if door:IsA("BasePart") then
+			door.Size = Vector3.new(CONFIG.DOOR_WIDTH, CONFIG.DOOR_WIDTH * 1.5, CONFIG.WALL_THICKNESS)
+		end
+	end
+	
+	-- ====== FENÊTRES ======
+	-- 2 fenêtres sur le mur est, espacées
+	local windowY = CONFIG.FLOOR_HEIGHT + CONFIG.BUILDING_HEIGHT * 0.5
+	
+	for i = 1, 2 do
+		local windowZOffset = (i - 1.5) * 5  -- Espacement de 5 studs entre fenêtres
+		local windowCFrame = baseCFrame * CFrame.new(CONFIG.BUILDING_WIDTH / 2 + 0.6, windowY, windowZOffset) * CFrame.Angles(0, math.pi / 2, 0)
 		
-		local wallPositions = {
-			{offset = CFrame.new(0, wallHeight, -8), rotation = 0, name = "Wall_North"},
-			{offset = CFrame.new(8, wallHeight, 0), rotation = math.pi/2, name = "Wall_East"},
-			{offset = CFrame.new(0, wallHeight, 8), rotation = math.pi, name = "Wall_South"},
-			{offset = CFrame.new(-8, wallHeight, 0), rotation = -math.pi/2, name = "Wall_West"}
-		}
-		
-		for _, wallData in ipairs(wallPositions) do
-			local wall = clonePrefabDeep(wallPrefab, "Walls")
-			if wall then
-				wall.Name = wallData.name
-				anchorModel(wall)
-				setModelCFrame(wall, baseCFrame * wallData.offset * CFrame.Angles(0, wallData.rotation, 0))
-				
-				wall.Parent = building
-				partsCreated = partsCreated + 1
-				print(string.format("  ✓ %s ajouté", wallData.name))
-			else
-				warn(string.format("  ✗ Échec clonage %s", wallData.name))
+		local window = createBuildingComponent("Windows", "Window_" .. i, windowCFrame, building, buildingIndex)
+		if window then
+			partsCreated = partsCreated + 1
+			table.insert(componentsList, window)
+			if window:IsA("BasePart") then
+				window.Size = Vector3.new(CONFIG.WINDOW_SIZE, CONFIG.WINDOW_SIZE, CONFIG.WALL_THICKNESS)
 			end
 		end
-	else
-		warn("  ✗ Aucun prefab Wall trouvé")
-	end
-	
-	-- Toit
-	local roofPrefab = getRandomPrefabFromCategory("Roofs")
-	if roofPrefab then
-		local roof = clonePrefabDeep(roofPrefab, "Roofs")
-		if roof then
-			roof.Name = "Roof"
-			
-			local roofSize = getModelSize(roof)
-			local roofHeight = 0.5 + 8 + (roofSize.Y / 2)
-			
-			anchorModel(roof)
-			setModelCFrame(roof, baseCFrame * CFrame.new(0, roofHeight, 0))
-			
-			roof.Parent = building
-			partsCreated = partsCreated + 1
-			print(string.format("  ✓ Roof ajouté (Size: %s)", tostring(roofSize)))
-		else
-			warn("  ✗ Échec clonage Roof")
-		end
-	else
-		warn("  ✗ Aucun prefab Roof trouvé")
-	end
-	
-	-- Porte (sur le mur avant)
-	local doorPrefab = getRandomPrefabFromCategory("Doors")
-	if doorPrefab then
-		local door = clonePrefabDeep(doorPrefab, "Doors")
-		if door then
-			door.Name = "Door"
-			
-			local doorSize = getModelSize(door)
-			local doorHeight = 0.5 + (doorSize.Y / 2)
-			
-			anchorModel(door)
-			setModelCFrame(door, baseCFrame * CFrame.new(0, doorHeight, -8.5))
-			
-			door.Parent = building
-			partsCreated = partsCreated + 1
-			print(string.format("  ✓ Door ajouté"))
-		end
-	end
-	
-	-- Fenêtres
-	local windowPrefab = getRandomPrefabFromCategory("Windows")
-	if windowPrefab then
-		local windowSize = getModelSize(windowPrefab)
-		local windowHeight = 0.5 + 3 + (windowSize.Y / 2)
-		
-		for i = 1, 3 do
-			local window = clonePrefabDeep(windowPrefab, "Windows")
-			if window then
-				window.Name = "Window_" .. i
-				anchorModel(window)
-				local windowOffset = CFrame.new((i-2) * 5, windowHeight, -8.5)
-				setModelCFrame(window, baseCFrame * windowOffset)
-				
-				window.Parent = building
-				partsCreated = partsCreated + 1
-			end
-		end
-		
-		print(string.format("  ✓ 3 Windows ajoutées"))
 	end
 	
 	print(string.format("✓ Building_%d créé avec %d éléments", buildingIndex, partsCreated))
 	
-	-- Définir la PrimaryPart du bâtiment
-	local primaryPart = building:FindFirstChildWhichIsA("BasePart", true)
-	if primaryPart then
-		building.PrimaryPart = primaryPart
+	-- Définir la PrimaryPart du bâtiment (utilise le sol si disponible)
+	if floor and floor:IsA("BasePart") then
+		building.PrimaryPart = floor
+	elseif floor and floor:IsA("Model") and floor.PrimaryPart then
+		building.PrimaryPart = floor.PrimaryPart
+	else
+		local primaryPart = building:FindFirstChildWhichIsA("BasePart", true)
+		if primaryPart then
+			building.PrimaryPart = primaryPart
+		end
 	end
 	
 	return building
@@ -745,7 +785,7 @@ local function createFortifications()
 			end
 		end
 		
-		-- Piliers de chaque côté
+		-- Piliers de chaque côté (espacés de 10 studs)
 		local pillarPrefab = getRandomPrefabFromCategory("Pillars")
 		if pillarPrefab then
 			local pillarSize = getModelSize(pillarPrefab)
@@ -755,7 +795,7 @@ local function createFortifications()
 			if leftPillar then
 				leftPillar.Name = "LeftPillar"
 				anchorModel(leftPillar)
-				local leftOffset = CFrame.new(-8, 0, 0)
+				local leftOffset = CFrame.new(-10, 0, 0)
 				setModelCFrame(leftPillar, CFrame.new(doorData.pos.X, yPosition, doorData.pos.Z) * CFrame.Angles(0, doorData.rot, 0) * leftOffset)
 				
 				leftPillar.Parent = gateModel
@@ -765,7 +805,7 @@ local function createFortifications()
 			if rightPillar then
 				rightPillar.Name = "RightPillar"
 				anchorModel(rightPillar)
-				local rightOffset = CFrame.new(8, 0, 0)
+				local rightOffset = CFrame.new(10, 0, 0)
 				setModelCFrame(rightPillar, CFrame.new(doorData.pos.X, yPosition, doorData.pos.Z) * CFrame.Angles(0, doorData.rot, 0) * rightOffset)
 				
 				rightPillar.Parent = gateModel
