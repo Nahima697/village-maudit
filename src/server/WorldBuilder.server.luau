@@ -5,6 +5,7 @@
     
     ADAPTATION : Fonctionne avec des MeshParts/BaseParts directs (dossier plat)
     CORRECTION : Validation des tailles et positionnement explicite
+    FIX : Instanciation profonde des bâtiments avec MeshParts visibles
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -190,11 +191,12 @@ local function validateAndFixSize(part, category)
 end
 
 -- ========================================
--- CLONAGE ET CONFIGURATION DES PREFABS
+-- CLONAGE ET CONFIGURATION DES PREFABS AMÉLIORÉ
 -- ========================================
 
-local function clonePrefab(prefab, category)
+local function clonePrefabDeep(prefab, category)
 	if not prefab then return nil end
+	
 	local clone = prefab:Clone()
 	
 	-- GESTION DIRECTE DES MESHPARTS / BASEPARTS
@@ -202,28 +204,51 @@ local function clonePrefab(prefab, category)
 		-- VALIDATION ET CORRECTION DE LA TAILLE
 		validateAndFixSize(clone, category or "Uncategorized")
 		
-		-- Configuration des propriétés de rendu
+		-- Configuration des propriétés de rendu CRITIQUES
 		clone.Anchored = true
 		clone.CanCollide = true
+		clone.Transparency = 0  -- FORCE la visibilité
 		
-		-- S'assurer que la transparence est correcte
-		if clone.Transparency >= 1 then
-			clone.Transparency = 0
+		-- Forcer les propriétés de surface pour le rendu
+		if clone:IsA("MeshPart") then
+			-- S'assurer que le MeshId existe
+			if clone.MeshId == "" or clone.MeshId == "rbxasset://fonts/leftarm.mesh" then
+				warn(string.format("WorldBuilder: MeshPart %s a un MeshId invalide", clone.Name))
+			end
+			
+			-- Forcer le matériau pour meilleure visibilité
+			if clone.Material == Enum.Material.Plastic then
+				clone.Material = Enum.Material.SmoothPlastic
+			end
 		end
+		
+		-- Vérification finale de visibilité
+		print(string.format("✓ MeshPart cloné: %s | Size: %s | Transparency: %s | Material: %s", 
+			clone.Name, 
+			tostring(clone.Size), 
+			tostring(clone.Transparency),
+			tostring(clone.Material)))
 		
 	elseif clone:IsA("Model") then
 		-- Ancrer et valider toutes les parts du modèle
+		local partCount = 0
 		for _, descendant in ipairs(clone:GetDescendants()) do
 			if descendant:IsA("BasePart") then
 				validateAndFixSize(descendant, category or "Uncategorized")
 				descendant.Anchored = true
+				descendant.Transparency = 0  -- FORCE la visibilité
 				
-				-- S'assurer que la transparence est correcte
-				if descendant.Transparency >= 1 then
-					descendant.Transparency = 0
+				if descendant:IsA("MeshPart") then
+					if descendant.Material == Enum.Material.Plastic then
+						descendant.Material = Enum.Material.SmoothPlastic
+					end
 				end
+				
+				partCount = partCount + 1
 			end
 		end
+		
+		print(string.format("✓ Model cloné: %s avec %d BaseParts", clone.Name, partCount))
 		
 		-- Définir la PrimaryPart si absente
 		if not clone.PrimaryPart then
@@ -346,7 +371,7 @@ local function createBasePlate()
 end
 
 -- ========================================
--- GÉNÉRATION FORÊT (PREFABS)
+-- GÉNÉRATION FORÊT (PREFABS) - AMÉLIORÉ
 -- ========================================
 
 local function generateForest()
@@ -377,30 +402,23 @@ local function generateForest()
 		-- Placement d'un arbre
 		local treePrefab = getRandomPrefabFromCategory("Trees")
 		if treePrefab then
-			local tree = clonePrefab(treePrefab, "Trees")
+			local tree = clonePrefabDeep(treePrefab, "Trees")
 			
 			if tree then
 				tree.Name = "Tree_" .. i
-				
-				-- PARENTING D'ABORD (critique pour MeshParts)
-				tree.Parent = treesFolder
 				
 				-- Calculer la hauteur pour placer correctement
 				local treeSize = getModelSize(tree)
 				local yPosition = 0.5 + (treeSize.Y / 2)
 				local position = Vector3.new(x, yPosition, z)
 				
-				-- Configuration des propriétés APRÈS parenting
+				-- Configuration des propriétés AVANT parenting
 				anchorModel(tree)
 				setModelPosition(tree, position)
 				tagModelAsCollectable(tree, "Wood")
 				
-				-- Vérification visuelle finale
-				if tree:IsA("BasePart") then
-					if tree.Transparency >= 1 then
-						tree.Transparency = 0
-					end
-				end
+				-- PARENTING EN DERNIER
+				tree.Parent = treesFolder
 				
 				successCount = successCount + 1
 			else
@@ -412,12 +430,10 @@ local function generateForest()
 		if math.random() < CONFIG.DECORATION_DENSITY then
 			local bushPrefab = getRandomPrefabFromCategory("Bushes")
 			if bushPrefab then
-				local bush = clonePrefab(bushPrefab, "Bushes")
+				local bush = clonePrefabDeep(bushPrefab, "Bushes")
 				
 				if bush then
 					bush.Name = "Bush_" .. i
-					
-					bush.Parent = treesFolder
 					
 					local bushSize = getModelSize(bush)
 					local offsetX = math.random(-8, 8)
@@ -426,6 +442,8 @@ local function generateForest()
 					
 					anchorModel(bush)
 					setModelPosition(bush, Vector3.new(x + offsetX, yPosition, z + offsetZ))
+					
+					bush.Parent = treesFolder
 				end
 			end
 		end
@@ -434,12 +452,10 @@ local function generateForest()
 		if math.random() < CONFIG.DECORATION_DENSITY * 0.5 then
 			local grassPrefab = getRandomPrefabFromCategory("Grass")
 			if grassPrefab then
-				local grass = clonePrefab(grassPrefab, "Grass")
+				local grass = clonePrefabDeep(grassPrefab, "Grass")
 				
 				if grass then
 					grass.Name = "Grass_" .. i
-					
-					grass.Parent = treesFolder
 					
 					local grassSize = getModelSize(grass)
 					local offsetX = math.random(-5, 5)
@@ -448,6 +464,8 @@ local function generateForest()
 					
 					anchorModel(grass)
 					setModelPosition(grass, Vector3.new(x + offsetX, yPosition, z + offsetZ))
+					
+					grass.Parent = treesFolder
 				end
 			end
 		end
@@ -458,7 +476,7 @@ local function generateForest()
 end
 
 -- ========================================
--- GÉNÉRATION ROCHERS (PREFABS)
+-- GÉNÉRATION ROCHERS (PREFABS) - AMÉLIORÉ
 -- ========================================
 
 local function generateRocks()
@@ -486,13 +504,10 @@ local function generateRocks()
 		
 		local rockPrefab = getRandomPrefabFromCategory("Rocks")
 		if rockPrefab then
-			local rock = clonePrefab(rockPrefab, "Rocks")
+			local rock = clonePrefabDeep(rockPrefab, "Rocks")
 			
 			if rock then
 				rock.Name = "Rock_" .. i
-				
-				-- PARENTING D'ABORD
-				rock.Parent = rocksFolder
 				
 				local rockSize = getModelSize(rock)
 				local yPosition = 0.5 + (rockSize.Y / 2)
@@ -502,12 +517,8 @@ local function generateRocks()
 				setModelCFrame(rock, CFrame.new(x, yPosition, z) * CFrame.Angles(0, randomRotation, 0))
 				tagModelAsCollectable(rock, "Stone")
 				
-				-- Vérification visuelle finale
-				if rock:IsA("BasePart") then
-					if rock.Transparency >= 1 then
-						rock.Transparency = 0
-					end
-				end
+				-- PARENTING EN DERNIER
+				rock.Parent = rocksFolder
 				
 				successCount = successCount + 1
 			else
@@ -521,29 +532,40 @@ local function generateRocks()
 end
 
 -- ========================================
--- GÉNÉRATION VILLAGE (PREFABS)
+-- GÉNÉRATION VILLAGE (PREFABS) - COMPLÈTEMENT REFAIT
 -- ========================================
 
 local function createBuilding(position, angle, buildingIndex)
+	print(string.format("--- Création Building_%d ---", buildingIndex))
+	
 	local building = Instance.new("Model")
 	building.Name = "Building_" .. buildingIndex
 	
 	local baseCFrame = CFrame.new(position) * CFrame.Angles(0, angle, 0)
 	
+	local partsCreated = 0
+	
 	-- Sol
 	local floorPrefab = getRandomPrefabFromCategory("Floors")
 	if floorPrefab then
-		local floor = clonePrefab(floorPrefab, "Floors")
+		local floor = clonePrefabDeep(floorPrefab, "Floors")
 		if floor then
 			floor.Name = "Floor"
-			floor.Parent = building
 			
 			local floorSize = getModelSize(floor)
 			local yOffset = 0.5 + (floorSize.Y / 2)
 			
 			anchorModel(floor)
 			setModelCFrame(floor, baseCFrame * CFrame.new(0, yOffset, 0))
+			
+			floor.Parent = building
+			partsCreated = partsCreated + 1
+			print(string.format("  ✓ Floor ajouté (Size: %s)", tostring(floorSize)))
+		else
+			warn("  ✗ Échec clonage Floor")
 		end
+	else
+		warn("  ✗ Aucun prefab Floor trouvé")
 	end
 	
 	-- Murs (4 côtés)
@@ -553,52 +575,69 @@ local function createBuilding(position, angle, buildingIndex)
 		local wallHeight = 0.5 + 3 + (wallSize.Y / 2)
 		
 		local wallPositions = {
-			{offset = CFrame.new(0, wallHeight, -8), rotation = 0},
-			{offset = CFrame.new(8, wallHeight, 0), rotation = math.pi/2},
-			{offset = CFrame.new(0, wallHeight, 8), rotation = math.pi},
-			{offset = CFrame.new(-8, wallHeight, 0), rotation = -math.pi/2}
+			{offset = CFrame.new(0, wallHeight, -8), rotation = 0, name = "Wall_North"},
+			{offset = CFrame.new(8, wallHeight, 0), rotation = math.pi/2, name = "Wall_East"},
+			{offset = CFrame.new(0, wallHeight, 8), rotation = math.pi, name = "Wall_South"},
+			{offset = CFrame.new(-8, wallHeight, 0), rotation = -math.pi/2, name = "Wall_West"}
 		}
 		
-		for i, wallData in ipairs(wallPositions) do
-			local wall = clonePrefab(wallPrefab, "Walls")
+		for _, wallData in ipairs(wallPositions) do
+			local wall = clonePrefabDeep(wallPrefab, "Walls")
 			if wall then
-				wall.Name = "Wall_" .. i
-				wall.Parent = building
+				wall.Name = wallData.name
 				anchorModel(wall)
 				setModelCFrame(wall, baseCFrame * wallData.offset * CFrame.Angles(0, wallData.rotation, 0))
+				
+				wall.Parent = building
+				partsCreated = partsCreated + 1
+				print(string.format("  ✓ %s ajouté", wallData.name))
+			else
+				warn(string.format("  ✗ Échec clonage %s", wallData.name))
 			end
 		end
+	else
+		warn("  ✗ Aucun prefab Wall trouvé")
 	end
 	
 	-- Toit
 	local roofPrefab = getRandomPrefabFromCategory("Roofs")
 	if roofPrefab then
-		local roof = clonePrefab(roofPrefab, "Roofs")
+		local roof = clonePrefabDeep(roofPrefab, "Roofs")
 		if roof then
 			roof.Name = "Roof"
-			roof.Parent = building
 			
 			local roofSize = getModelSize(roof)
 			local roofHeight = 0.5 + 8 + (roofSize.Y / 2)
 			
 			anchorModel(roof)
 			setModelCFrame(roof, baseCFrame * CFrame.new(0, roofHeight, 0))
+			
+			roof.Parent = building
+			partsCreated = partsCreated + 1
+			print(string.format("  ✓ Roof ajouté (Size: %s)", tostring(roofSize)))
+		else
+			warn("  ✗ Échec clonage Roof")
 		end
+	else
+		warn("  ✗ Aucun prefab Roof trouvé")
 	end
 	
 	-- Porte (sur le mur avant)
 	local doorPrefab = getRandomPrefabFromCategory("Doors")
 	if doorPrefab then
-		local door = clonePrefab(doorPrefab, "Doors")
+		local door = clonePrefabDeep(doorPrefab, "Doors")
 		if door then
 			door.Name = "Door"
-			door.Parent = building
 			
 			local doorSize = getModelSize(door)
 			local doorHeight = 0.5 + (doorSize.Y / 2)
 			
 			anchorModel(door)
 			setModelCFrame(door, baseCFrame * CFrame.new(0, doorHeight, -8.5))
+			
+			door.Parent = building
+			partsCreated = partsCreated + 1
+			print(string.format("  ✓ Door ajouté"))
 		end
 	end
 	
@@ -609,15 +648,27 @@ local function createBuilding(position, angle, buildingIndex)
 		local windowHeight = 0.5 + 3 + (windowSize.Y / 2)
 		
 		for i = 1, 3 do
-			local window = clonePrefab(windowPrefab, "Windows")
+			local window = clonePrefabDeep(windowPrefab, "Windows")
 			if window then
 				window.Name = "Window_" .. i
-				window.Parent = building
 				anchorModel(window)
 				local windowOffset = CFrame.new((i-2) * 5, windowHeight, -8.5)
 				setModelCFrame(window, baseCFrame * windowOffset)
+				
+				window.Parent = building
+				partsCreated = partsCreated + 1
 			end
 		end
+		
+		print(string.format("  ✓ 3 Windows ajoutées"))
+	end
+	
+	print(string.format("✓ Building_%d créé avec %d éléments", buildingIndex, partsCreated))
+	
+	-- Définir la PrimaryPart du bâtiment
+	local primaryPart = building:FindFirstChildWhichIsA("BasePart", true)
+	if primaryPart then
+		building.PrimaryPart = primaryPart
 	end
 	
 	return building
@@ -633,7 +684,9 @@ local function generateVillage()
 		villageFolder:ClearAllChildren()
 	end
 	
+	print("========================================")
 	print("WorldBuilder: Génération du village avec " .. CONFIG.BUILDING_COUNT .. " bâtiments...")
+	print("========================================")
 	
 	for i = 1, CONFIG.BUILDING_COUNT do
 		local angle = (i - 1) * (math.pi * 2 / CONFIG.BUILDING_COUNT)
@@ -643,9 +696,16 @@ local function generateVillage()
 		
 		local building = createBuilding(Vector3.new(x, 0, z), angle - math.pi / 2, i)
 		building.Parent = villageFolder
+		
+		-- Vérification post-parenting
+		task.wait(0.1)
+		local childCount = #building:GetChildren()
+		print(string.format("Building_%d parent dans Village - %d enfants détectés", i, childCount))
 	end
 	
+	print("========================================")
 	print("WorldBuilder: Village généré!")
+	print("========================================")
 end
 
 -- ========================================
@@ -673,15 +733,15 @@ local function createFortifications()
 		-- Portail central
 		local gatePrefab = getRandomPrefabFromCategory("Gates")
 		if gatePrefab then
-			local gate = clonePrefab(gatePrefab, "Gates")
+			local gate = clonePrefabDeep(gatePrefab, "Gates")
 			if gate then
-				gate.Parent = gateModel
-				
 				local gateSize = getModelSize(gate)
 				local yPosition = 0.5 + (gateSize.Y / 2)
 				
 				anchorModel(gate)
 				setModelCFrame(gate, CFrame.new(doorData.pos.X, yPosition, doorData.pos.Z) * CFrame.Angles(0, doorData.rot, 0))
+				
+				gate.Parent = gateModel
 			end
 		end
 		
@@ -691,22 +751,24 @@ local function createFortifications()
 			local pillarSize = getModelSize(pillarPrefab)
 			local yPosition = 0.5 + (pillarSize.Y / 2)
 			
-			local leftPillar = clonePrefab(pillarPrefab, "Pillars")
+			local leftPillar = clonePrefabDeep(pillarPrefab, "Pillars")
 			if leftPillar then
 				leftPillar.Name = "LeftPillar"
-				leftPillar.Parent = gateModel
 				anchorModel(leftPillar)
 				local leftOffset = CFrame.new(-8, 0, 0)
 				setModelCFrame(leftPillar, CFrame.new(doorData.pos.X, yPosition, doorData.pos.Z) * CFrame.Angles(0, doorData.rot, 0) * leftOffset)
+				
+				leftPillar.Parent = gateModel
 			end
 			
-			local rightPillar = clonePrefab(pillarPrefab, "Pillars")
+			local rightPillar = clonePrefabDeep(pillarPrefab, "Pillars")
 			if rightPillar then
 				rightPillar.Name = "RightPillar"
-				rightPillar.Parent = gateModel
 				anchorModel(rightPillar)
 				local rightOffset = CFrame.new(8, 0, 0)
 				setModelCFrame(rightPillar, CFrame.new(doorData.pos.X, yPosition, doorData.pos.Z) * CFrame.Angles(0, doorData.rot, 0) * rightOffset)
+				
+				rightPillar.Parent = gateModel
 			end
 		end
 	end
@@ -715,7 +777,7 @@ local function createFortifications()
 end
 
 -- ========================================
--- PLACE CENTRALE
+-- PLACE CENTRALE - AMÉLIORÉ
 -- ========================================
 
 local function createCentralSquare()
@@ -756,16 +818,17 @@ local function createCentralSquare()
 		
 		local benchPrefab = getRandomPrefabFromCategory("Benches")
 		if benchPrefab then
-			local bench = clonePrefab(benchPrefab, "Benches")
+			local bench = clonePrefabDeep(benchPrefab, "Benches")
 			if bench then
 				bench.Name = "Bench_" .. i
-				bench.Parent = squareFolder
 				
 				local benchSize = getModelSize(bench)
 				local yPosition = 0.5 + (benchSize.Y / 2)
 				
 				anchorModel(bench)
 				setModelCFrame(bench, CFrame.new(x, yPosition, z) * CFrame.Angles(0, -angle, 0))
+				
+				bench.Parent = squareFolder
 			end
 		end
 	end
@@ -781,16 +844,17 @@ local function createCentralSquare()
 		if i % 2 == 1 then
 			local barrelPrefab = getRandomPrefabFromCategory("Barrels")
 			if barrelPrefab then
-				local barrel = clonePrefab(barrelPrefab, "Barrels")
+				local barrel = clonePrefabDeep(barrelPrefab, "Barrels")
 				if barrel then
 					barrel.Name = "Barrel_" .. i
-					barrel.Parent = squareFolder
 					
 					local barrelSize = getModelSize(barrel)
 					local yPosition = 0.5 + (barrelSize.Y / 2)
 					
 					anchorModel(barrel)
 					setModelPosition(barrel, Vector3.new(x, yPosition, z))
+					
+					barrel.Parent = squareFolder
 				end
 			end
 		end
@@ -799,16 +863,17 @@ local function createCentralSquare()
 		if i % 2 == 0 then
 			local lampPrefab = getRandomPrefabFromCategory("Lamps")
 			if lampPrefab then
-				local lamp = clonePrefab(lampPrefab, "Lamps")
+				local lamp = clonePrefabDeep(lampPrefab, "Lamps")
 				if lamp then
 					lamp.Name = "Lamp_" .. i
-					lamp.Parent = squareFolder
 					
 					local lampSize = getModelSize(lamp)
 					local yPosition = 0.5 + (lampSize.Y / 2)
 					
 					anchorModel(lamp)
 					setModelPosition(lamp, Vector3.new(x, yPosition, z))
+					
+					lamp.Parent = squareFolder
 					
 					-- Ajout d'une lumière si pas déjà présente
 					local hasLight = false
@@ -923,7 +988,6 @@ local function generateWorld()
 		categorizePrefabs()
 	else
 		warn("WorldBuilder: AUCUN PREFAB DÉTECTÉ - Génération impossible")
-		-- Ne pas retourner, continuer avec les éléments procéduraux
 	end
 	
 	-- Génération du terrain
