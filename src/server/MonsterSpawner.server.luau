@@ -9,6 +9,8 @@
 	- Détection et attaque des joueurs proches
 	- Attaque des portes si aucun joueur n'est à portée
 	- Nettoyage automatique au lever du jour
+	
+	Version 2.0 : Compatible avec WorldBuilder 3D
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -169,38 +171,159 @@ local function createMonster()
 end
 
 --[[
+	Trouve toutes les portes dans le monde via CollectionService ou recherche récursive
+	Compatible avec le nouveau WorldBuilder 3D
+	@return table - Liste des parts de porte trouvées
+]]
+local function findAllDoors()
+	local foundDoors = {}
+	
+	-- Méthode 1 : Via CollectionService (si les portes sont taggées "Door" ou "VillageDoor")
+	local taggedDoors = CollectionService:GetTagged("Door")
+	for _, door in ipairs(taggedDoors) do
+		if door:IsA("BasePart") then
+			table.insert(foundDoors, door)
+		elseif door:IsA("Model") then
+			-- Si c'est un modèle, chercher la part principale
+			local doorPart = door:FindFirstChild("DoorPart") or door:FindFirstChild("Door") or door.PrimaryPart
+			if doorPart and doorPart:IsA("BasePart") then
+				table.insert(foundDoors, doorPart)
+			end
+		end
+	end
+	
+	-- Méthode 2 : Recherche dans workspace.Village
+	local village = workspace:FindFirstChild("Village")
+	if village then
+		-- Chercher dans Fortifications si existe
+		local fortifications = village:FindFirstChild("Fortifications")
+		if fortifications then
+			for _, child in ipairs(fortifications:GetChildren()) do
+				if child.Name:match("Door") or child.Name:match("Gate") then
+					local doorPart = nil
+					if child:IsA("BasePart") then
+						doorPart = child
+					elseif child:IsA("Model") then
+						doorPart = child:FindFirstChild("DoorPart") or child:FindFirstChild("Door") or child.PrimaryPart
+					end
+					
+					if doorPart and doorPart:IsA("BasePart") then
+						-- Éviter les doublons
+						local alreadyAdded = false
+						for _, existing in ipairs(foundDoors) do
+							if existing == doorPart then
+								alreadyAdded = true
+								break
+							end
+						end
+						if not alreadyAdded then
+							table.insert(foundDoors, doorPart)
+						end
+					end
+				end
+			end
+		end
+		
+		-- Chercher directement dans Village aussi
+		for _, child in ipairs(village:GetChildren()) do
+			if child.Name:match("Door") or child.Name:match("Gate") then
+				local doorPart = nil
+				if child:IsA("BasePart") then
+					doorPart = child
+				elseif child:IsA("Model") then
+					doorPart = child:FindFirstChild("DoorPart") or child:FindFirstChild("Door") or child.PrimaryPart
+				end
+				
+				if doorPart and doorPart:IsA("BasePart") then
+					local alreadyAdded = false
+					for _, existing in ipairs(foundDoors) do
+						if existing == doorPart then
+							alreadyAdded = true
+							break
+						end
+					end
+					if not alreadyAdded then
+						table.insert(foundDoors, doorPart)
+					end
+				end
+			end
+		end
+	end
+	
+	-- Méthode 3 : Recherche globale par nom (fallback)
+	if #foundDoors == 0 then
+		local function searchRecursive(parent)
+			for _, child in ipairs(parent:GetChildren()) do
+				if child.Name:match("Door") or child.Name:match("Gate") then
+					local doorPart = nil
+					if child:IsA("BasePart") then
+						doorPart = child
+					elseif child:IsA("Model") then
+						doorPart = child:FindFirstChild("DoorPart") or child:FindFirstChild("Door") or child.PrimaryPart
+					end
+					
+					if doorPart and doorPart:IsA("BasePart") then
+						table.insert(foundDoors, doorPart)
+					end
+				end
+				
+				if child:IsA("Folder") or child:IsA("Model") then
+					searchRecursive(child)
+				end
+			end
+		end
+		
+		searchRecursive(workspace)
+	end
+	
+	return foundDoors
+end
+
+--[[
 	Initialise les références aux portes et leur santé
+	Version 2.0 : Compatible avec WorldBuilder 3D
 ]]
 local function initializeDoors()
 	doors = {}
 	
-	local fortifications = workspace:WaitForChild("Village", 10)
-	if fortifications then
-		fortifications = fortifications:WaitForChild("Fortifications", 10)
+	print("[MonsterSpawner] Recherche des portes...")
+	
+	-- Attendre que le monde soit généré
+	local maxWaitTime = 30
+	local waited = 0
+	while not workspace:FindFirstChild("Village") and waited < maxWaitTime do
+		task.wait(0.5)
+		waited = waited + 0.5
 	end
 	
-	if not fortifications then
-		warn("[MonsterSpawner] Fortifications non trouvées")
-		return
+	if not workspace:FindFirstChild("Village") then
+		warn("[MonsterSpawner] Village non trouvé après", maxWaitTime, "secondes")
 	end
 	
-	for _, doorName in ipairs({"Door_North", "Door_East", "Door_West", "Door_South"}) do
-		local doorModel = fortifications:FindFirstChild(doorName)
-		if doorModel then
-			local doorPart = doorModel:FindFirstChild("DoorPart")
-			if doorPart then
+	-- Trouver toutes les portes
+	local foundDoors = findAllDoors()
+	
+	-- Initialiser chaque porte
+	for _, doorPart in ipairs(foundDoors) do
+		if doorPart:IsA("BasePart") then
+			-- Initialiser les attributs de santé si pas déjà fait
+			if not doorPart:GetAttribute("Health") then
 				doorPart:SetAttribute("Health", DOOR_MAX_HEALTH)
-				doorPart:SetAttribute("MaxHealth", DOOR_MAX_HEALTH)
-				table.insert(doors, doorPart)
-			else
-				warn("[MonsterSpawner] DoorPart non trouvée dans", doorName)
 			end
-		else
-			warn("[MonsterSpawner] Porte non trouvée:", doorName)
+			if not doorPart:GetAttribute("MaxHealth") then
+				doorPart:SetAttribute("MaxHealth", DOOR_MAX_HEALTH)
+			end
+			
+			table.insert(doors, doorPart)
+			print("[MonsterSpawner] Porte initialisée:", doorPart:GetFullName())
 		end
 	end
 	
-	print("[MonsterSpawner] Portes initialisées:", #doors)
+	if #doors == 0 then
+		warn("[MonsterSpawner] ATTENTION : Aucune porte trouvée ! Les monstres n'auront pas de cible.")
+	else
+		print("[MonsterSpawner] Total de portes initialisées:", #doors)
+	end
 end
 
 --[[
@@ -213,7 +336,7 @@ local function findNearestDoor(position)
 	local shortestDistance = math.huge
 	
 	for _, door in ipairs(doors) do
-		if door and door.Parent and door:GetAttribute("Health") > 0 then
+		if door and door.Parent and (door:GetAttribute("Health") or 0) > 0 then
 			local distance = (door.Position - position).Magnitude
 			if distance < shortestDistance then
 				shortestDistance = distance
@@ -242,8 +365,9 @@ local function findNearestPlayer(monsterPosition)
 			if humanoid and humanoid.Health > 0 and rootPart then
 				-- Vérifier si le joueur est dans la SafeZone
 				local inSafeZone = false
-				if rootPart:FindFirstChild("InSafeZone") then
-					inSafeZone = rootPart.InSafeZone.Value
+				local safeZoneValue = rootPart:FindFirstChild("InSafeZone")
+				if safeZoneValue and safeZoneValue:IsA("BoolValue") then
+					inSafeZone = safeZoneValue.Value
 				end
 				
 				if not inSafeZone then
@@ -274,23 +398,28 @@ local function attackTarget(monster, target, monsterData)
 	
 	monsterData.lastAttackTime = currentTime
 	
-	if target:IsA("Part") then
+	if target:IsA("BasePart") then
 		-- Attaque de porte
 		local currentHealth = target:GetAttribute("Health") or 0
 		local newHealth = math.max(0, currentHealth - MONSTER_DOOR_DAMAGE)
 		target:SetAttribute("Health", newHealth)
 		
+		print(string.format("[MonsterSpawner] Porte attaquée: %s (%d/%d HP)", 
+			target.Name, newHealth, target:GetAttribute("MaxHealth") or DOOR_MAX_HEALTH))
+		
 		if newHealth <= 0 then
 			-- Porte détruite
 			target.CanCollide = false
 			target.Transparency = 0.7
-			print("[MonsterSpawner] Porte détruite!")
+			warn("[MonsterSpawner] Porte détruite:", target:GetFullName())
 		end
 	elseif target:IsA("Model") then
 		-- Attaque de joueur
 		local humanoid = target:FindFirstChild("Humanoid")
 		if humanoid and humanoid.Health > 0 then
 			humanoid:TakeDamage(MONSTER_ATTACK_DAMAGE)
+			print(string.format("[MonsterSpawner] Joueur attaqué: %s (%d HP)", 
+				target.Name, humanoid.Health))
 		end
 	end
 end
@@ -393,7 +522,7 @@ local function setupMonsterBehavior(monster, spawnPosition)
 								
 								if #waypoints > 0 then
 									-- Suivre le chemin
-									for i = 2, math.min(#waypoints, 5) do -- Limiter à 5 waypoints pour éviter les calculs lourds
+									for i = 2, math.min(#waypoints, 5) do
 										if not monsterData.isActive or not isNightPhase then
 											break
 										end
@@ -439,7 +568,35 @@ local function spawnMonsters()
 	local spawnPoints = CollectionService:GetTagged("MonsterSpawnPoint")
 	
 	if #spawnPoints == 0 then
-		warn("[MonsterSpawner] Aucun point de spawn trouvé!")
+		warn("[MonsterSpawner] Aucun point de spawn trouvé! Les monstres apparaîtront au hasard.")
+		
+		-- Créer des points de spawn temporaires autour du village
+		local village = workspace:FindFirstChild("Village")
+		if village then
+			local villageCF = village:GetPivot()
+			local spawnRadius = 100
+			
+			for angle = 0, 360, 45 do
+				local rad = math.rad(angle)
+				local x = villageCF.X + math.cos(rad) * spawnRadius
+				local z = villageCF.Z + math.sin(rad) * spawnRadius
+				
+				local tempSpawn = Instance.new("Part")
+				tempSpawn.Size = Vector3.new(1, 1, 1)
+				tempSpawn.Position = Vector3.new(x, 50, z)
+				tempSpawn.Transparency = 1
+				tempSpawn.CanCollide = false
+				tempSpawn.Anchored = true
+				tempSpawn.Name = "TempMonsterSpawn"
+				tempSpawn.Parent = workspace
+				
+				table.insert(spawnPoints, tempSpawn)
+			end
+		end
+	end
+	
+	if #spawnPoints == 0 then
+		warn("[MonsterSpawner] Impossible de créer des points de spawn!")
 		return
 	end
 	
@@ -467,8 +624,10 @@ local function spawnMonsters()
 		-- Configurer le comportement
 		setupMonsterBehavior(monster, spawnPosition)
 		
-		task.wait(0.1) -- Petit délai entre chaque spawn
+		task.wait(0.1)
 	end
+	
+	print("[MonsterSpawner] Spawn terminé:", monsterCount, "monstres actifs")
 end
 
 --[[
@@ -493,6 +652,8 @@ local function cleanupMonsters()
 		monsterFolder:Destroy()
 	end
 	monsterFolder = nil
+	
+	print("[MonsterSpawner] Nettoyage terminé")
 end
 
 --[[
@@ -531,14 +692,14 @@ local function setupPhaseListener()
 		end
 	end)
 	
-	print("[MonsterSpawner] Listener de phase initialisé (via SharedData.CurrentPhase)")
+	print("[MonsterSpawner] Listener de phase initialisé")
 end
 
 --[[
 	Initialisation du script
 ]]
 local function initialize()
-	print("[MonsterSpawner] Initialisation...")
+	print("[MonsterSpawner] Initialisation v2.0 (Compatible WorldBuilder 3D)...")
 	
 	-- Initialiser les portes
 	initializeDoors()
