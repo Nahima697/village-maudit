@@ -101,7 +101,7 @@ local function generateForest(parentFolder)
 		if tree then
 			scaleToHeight(tree, CONFIG.TARGET_TREE_HEIGHT)
 			local randomYaw = CFrame.Angles(0, math.random() * math.pi * 2, 0)
-			placeAt(tree, CFrame.new(x, 0, z) * randomYaw * UP_AXIS_CORRECTION, parentFolder)
+			placeAt(tree, CFrame.new(x, 0, z) * randomYaw, parentFolder)
 			CollectionService:AddTag(tree, "Collectable")
 			tree:SetAttribute("ResourceType", "Wood")
 		end
@@ -119,7 +119,7 @@ local function generateRocks(parentFolder)
 		if rock then
 			scaleToHeight(rock, CONFIG.TARGET_ROCK_HEIGHT)
 			local randomYaw = CFrame.Angles(0, math.random() * math.pi * 2, 0)
-			placeAt(rock, CFrame.new(x, 0, z) * randomYaw * UP_AXIS_CORRECTION, parentFolder)
+			placeAt(rock, CFrame.new(x, 0, z) * randomYaw, parentFolder)
 			CollectionService:AddTag(rock, "Collectable")
 			rock:SetAttribute("ResourceType", "Stone")
 		end
