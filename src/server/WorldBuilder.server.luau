@@ -88,7 +88,7 @@ local function generateVillageGrid()
 			end
 			if clone.PrimaryPart then
 				local currentPivot = clone:GetPivot()
-				clone:PivotTo(CFrame.new(x, currentPivot.Position.Y, z) * (currentPivot - currentPivot.Position))
+				clone:PivotTo(CFrame.new(x, 0, z) * (currentPivot - currentPivot.Position))
 			end
 		elseif clone:IsA("BasePart") then
 			clone.Position = Vector3.new(x, clone.Position.Y, z)
