@@ -110,10 +110,8 @@ local function placeOnGround(obj, x, z)
 		local cf, size = obj:GetBoundingBox()
 		local bottomY = cf.Position.Y - size.Y / 2
 		local pivot = obj:GetPivot()
-		local deltaX = x - pivot.Position.X
-		local deltaY = -bottomY
-		local deltaZ = z - pivot.Position.Z
-		obj:PivotTo(pivot + Vector3.new(deltaX, deltaY, deltaZ))
+		local _, yaw, _ = pivot:ToEulerAnglesYXZ()
+		obj:PivotTo(CFrame.new(x, pivot.Position.Y - bottomY, z) * CFrame.Angles(0, yaw, 0))
 	elseif obj:IsA("BasePart") then
 		obj.Anchored = true
 		obj.Position = Vector3.new(x, obj.Size.Y / 2, z)
