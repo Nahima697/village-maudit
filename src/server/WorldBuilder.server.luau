@@ -21,11 +21,15 @@ local EXCLUDED_NAMES = {
 	Terrain = true, Camera = true, MedievalHouse = true,
 	BasePlate = true, Baseplate = true, MonsterSpawns = true,
 	Campfires = true, Hazards = true,
-	-- Ces deux objets sont des environnements complets pré-construits
-	-- (sol + murs + décor intégrés), pas de simples props : à positionner
-	-- une seule fois à la main, jamais recalculés en cercle automatique.
-	["Forest Portal Template"] = true,
-	["Graveyard Map"] = true,
+}
+
+-- Ces deux objets sont des environnements complets pré-construits
+-- (sol + murs + décor intégrés sur 150-200 studs). Pas de calcul en
+-- cercle pour eux (pensé pour des petits props) : position fixe dédiée
+-- à côté du village, mais posés au sol comme les autres.
+local FIXED_ENVIRONMENTS = {
+	["Forest Portal Template"] = {x = 200, z = 30},
+	["Graveyard Map"] = {x = -200, z = 30},
 }
 
 local ZONES = {
@@ -123,11 +127,21 @@ local function placeOnGround(obj, x, z)
 	end
 end
 
+local function placeFixedEnvironments()
+	for name, coords in pairs(FIXED_ENVIRONMENTS) do
+		local obj = workspace:FindFirstChild(name)
+		if obj then
+			placeOnGround(obj, coords.x, coords.z)
+			print("[WorldBuilder] Environnement fixe '" .. name .. "' placé à (" .. coords.x .. ", " .. coords.z .. ").")
+		end
+	end
+end
+
 local function arrangeLooseObjects()
 	local grouped = {Forest = {}, Cemetery = {}, CloseDecor = {}, Default = {}}
 
 	for _, obj in ipairs(workspace:GetChildren()) do
-		if not EXCLUDED_NAMES[obj.Name] and (obj:IsA("Model") or obj:IsA("BasePart")) then
+		if not EXCLUDED_NAMES[obj.Name] and not FIXED_ENVIRONMENTS[obj.Name] and (obj:IsA("Model") or obj:IsA("BasePart")) then
 			local zoneName = classify(obj.Name)
 			table.insert(grouped[zoneName], obj)
 		end
@@ -160,6 +174,7 @@ end
 
 ensureBaseplate()
 generateMonsterSpawns()
+placeFixedEnvironments()
 arrangeLooseObjects()
 
 print("[WorldBuilder] Sol + points de spawn prêts. Objets rangés par zone au démarrage.")
