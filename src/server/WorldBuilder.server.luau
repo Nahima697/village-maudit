@@ -28,7 +28,6 @@ local EXCLUDED_NAMES = {
 -- cercle pour eux (pensé pour des petits props) : position fixe dédiée
 -- à côté du village, mais posés au sol comme les autres.
 local FIXED_ENVIRONMENTS = {
-	["Forest Portal Template"] = {x = 200, z = 30},
 	["Graveyard Map"] = {x = -200, z = 30},
 }
 
