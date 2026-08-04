@@ -27,7 +27,7 @@ while IFS= read -r line; do
 
     echo "👨‍💻 [DEVELOPER] $FILE..."
     DEV_ROLE=$(cat agents/developer/agent.md)
-    CONTRACT=$(cat AI_CONTRACT.md 2>/dev/null)
+    CONTRACT=$(cat prompts/AI_CONTRACT.md 2>/dev/null)
     STRUCTURE=$(find src/ -type f | sed 's/^/ - /')
     CURRENT=$(cat "$FILE" 2>/dev/null || echo "Nouveau fichier.")
     echo "$DEV_ROLE

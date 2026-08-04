@@ -14,7 +14,7 @@ if [ ! -f "$PROMPT_FILE" ]; then
 fi
 
 PROJECT_STRUCTURE=$(find src/ -type f | sed 's/^/ - /')
-CONTRACT_CONTENT=$(cat AI_CONTRACT.md 2>/dev/null || echo "Pas de contrat trouvé.")
+CONTRACT_CONTENT=$(cat prompts/AI_CONTRACT.md 2>/dev/null || echo "Pas de contrat trouvé.")
 USER_PROMPT=$(cat "$PROMPT_FILE")
 CURRENT_TARGET_CONTENT=$(cat "$TARGET_FILE" 2>/dev/null || echo "Fichier vide ou nouveau.")
 
