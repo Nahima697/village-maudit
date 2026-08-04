@@ -33,6 +33,11 @@ local CORNER = "Corner_Exterior_Wood"
 local ROOF = "Roof_RoundTiles_6x6"
 local FLOOR = "Floor_WoodDark"
 
+-- Le pack Medieval Village a été exporté à une échelle minuscule
+-- (un mur droit ne mesure que ~2 studs de large, soit deux fois plus
+-- petit qu'un joueur Roblox). On remet à l'échelle humaine ici.
+local SCALE_FACTOR = 4
+
 local TREE_NAMES = {"Tree_1_C_Color1", "Tree_2_E_Color1", "Tree_4_B_Color1", "Tree_Bare_1_A_Color1"}
 local ROCK_NAMES = {"Rock_1_A_Color1", "Rock_1_Q_Color1", "Rock_2_A_Color1"}
 local BUSH_NAMES = {"Bush_1_A_Color1", "Bush_1_B_Color1", "Bush_1_F_Color1"}
@@ -49,6 +54,27 @@ local function getPrefab(name)
 	return p
 end
 
+-- Clone un prefab de bâtiment et le remet à l'échelle humaine (SCALE_FACTOR).
+-- Utilisé pour murs/coins/toit/sol/portes (tout ce qui vient du pack Medieval Village).
+local function clonePrefabScaled(name)
+	local prefab = getPrefab(name)
+	if not prefab then return nil end
+	local clone = prefab:Clone()
+	if clone:IsA("Model") then
+		local ok = pcall(function()
+			clone:ScaleTo(SCALE_FACTOR)
+		end)
+		if not ok then
+			warn("[WorldBuilder] ⚠️ ScaleTo a échoué sur", name, "- taille d'origine conservée")
+		end
+	elseif clone:IsA("BasePart") then
+		clone.Size = clone.Size * SCALE_FACTOR
+	end
+	return clone
+end
+
+-- Clone un prefab SANS mise à l'échelle (arbres/rochers/buissons du pack
+-- KayKit, qui sont déjà à une échelle correcte).
 local function clonePrefab(name)
 	local prefab = getPrefab(name)
 	if not prefab then return nil end
@@ -107,9 +133,9 @@ end
 -- CONSTRUCTION D'UN BÂTIMENT (4 murs, 1 porte, 4 coins, sol, toit)
 -- ========================================
 
-local wallSize = getPrefabSize(WALL_STRAIGHT)
-local WALL_WIDTH = wallSize.X > 0 and wallSize.X or 8
-local WALL_HEIGHT = wallSize.Y > 0 and wallSize.Y or 8
+local wallSizeRaw = getPrefabSize(WALL_STRAIGHT)
+local WALL_WIDTH = (wallSizeRaw.X > 0 and wallSizeRaw.X or 2) * SCALE_FACTOR
+local WALL_HEIGHT = (wallSizeRaw.Y > 0 and wallSizeRaw.Y or 3) * SCALE_FACTOR
 
 local function buildHouse(center, rotationY, parentFolder, buildingIndex)
 	local houseFolder = Instance.new("Model")
@@ -120,7 +146,7 @@ local function buildHouse(center, rotationY, parentFolder, buildingIndex)
 	local half = WALL_WIDTH / 2
 
 	-- Sol
-	local floor = clonePrefab(FLOOR)
+	local floor = clonePrefabScaled(FLOOR)
 	if floor then
 		placeAt(floor, baseCFrame, houseFolder)
 	end
@@ -134,7 +160,7 @@ local function buildHouse(center, rotationY, parentFolder, buildingIndex)
 	}
 
 	for _, w in ipairs(wallOffsets) do
-		local wall = clonePrefab(w.name)
+		local wall = clonePrefabScaled(w.name)
 		if wall then
 			placeAt(wall, baseCFrame * w.offset, houseFolder)
 		end
@@ -148,14 +174,14 @@ local function buildHouse(center, rotationY, parentFolder, buildingIndex)
 		CFrame.new(-half, 0, half) * CFrame.Angles(0, math.rad(-90), 0),
 	}
 	for _, offset in ipairs(cornerOffsets) do
-		local corner = clonePrefab(CORNER)
+		local corner = clonePrefabScaled(CORNER)
 		if corner then
 			placeAt(corner, baseCFrame * offset, houseFolder)
 		end
 	end
 
 	-- Toit
-	local roof = clonePrefab(ROOF)
+	local roof = clonePrefabScaled(ROOF)
 	if roof then
 		placeAt(roof, baseCFrame * CFrame.new(0, WALL_HEIGHT, 0), houseFolder)
 	end
