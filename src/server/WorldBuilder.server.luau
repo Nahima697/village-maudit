@@ -226,6 +226,6 @@ generateMonsterSpawns()
 placeFixedEnvironments()
 arrangeLooseObjects()
 -- Décommente la ligne suivante et ajuste le nombre pour dupliquer des maisons :
--- duplicateHouses(3)
+duplicateHouses(3)
 
 print("[WorldBuilder] Sol + points de spawn prêts. Objets rangés par zone au démarrage.")
