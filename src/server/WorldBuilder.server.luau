@@ -198,9 +198,34 @@ local function arrangeLooseObjects()
 	print("[WorldBuilder] " .. totalCount .. " objet(s) rangé(s) au total, répartis par zone.")
 end
 
+local function duplicateHouses(count)
+	local template = workspace:FindFirstChild("MedievalHouse")
+	if not template then
+		warn("[WorldBuilder] MedievalHouse introuvable, impossible de dupliquer")
+		return
+	end
+
+	local _, size = template:GetBoundingBox()
+	local spacing = math.max(size.X, size.Z) + 15
+
+	for i = 1, count do
+		local clone = template:Clone()
+		clone.Name = "MedievalHouse_Copy" .. i
+		local angle = (i / (count + 1)) * math.pi * 2
+		local radius = 90
+		local x = CONFIG.CENTER.X + math.cos(angle) * radius
+		local z = CONFIG.CENTER.Z + math.sin(angle) * radius
+		placeOnGround(clone, x, z)
+		clone.Parent = workspace
+		print("[WorldBuilder] Maison dupliquée : " .. clone.Name .. " à (" .. math.floor(x) .. ", " .. math.floor(z) .. ")")
+	end
+end
+
 ensureBaseplate()
 generateMonsterSpawns()
 placeFixedEnvironments()
 arrangeLooseObjects()
+-- Décommente la ligne suivante et ajuste le nombre pour dupliquer des maisons :
+-- duplicateHouses(3)
 
 print("[WorldBuilder] Sol + points de spawn prêts. Objets rangés par zone au démarrage.")
