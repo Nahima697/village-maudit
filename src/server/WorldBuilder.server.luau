@@ -1,8 +1,9 @@
 --[[
 	WorldBuilder.server.luau (version minimale)
-	Génère uniquement : sol, forêt, rochers, points de spawn de monstres.
-	AUCUN bâtiment pour l'instant - à ajouter une fois qu'une maison
-	aura été assemblée à la main dans Studio (ReplicatedStorage.Prefabs.House_Template).
+	Sol + forêt + rochers + points de spawn. Chaque prefab est remis à une
+	taille cible en studs (mesurée individuellement), avec une rotation
+	correctrice car le pack a été exporté avec Z comme axe "haut" au lieu
+	de Y (convention Blender vs Roblox) - sans ça, tout apparaît couché.
 ]]
 
 local CollectionService = game:GetService("CollectionService")
@@ -14,6 +15,8 @@ local CONFIG = {
 	FOREST_MAX_RADIUS = 150,
 	TREE_COUNT = 100,
 	ROCK_COUNT = 30,
+	TARGET_TREE_HEIGHT = 20,
+	TARGET_ROCK_HEIGHT = 5,
 }
 
 local Prefabs = ReplicatedStorage:FindFirstChild("Prefabs")
@@ -25,6 +28,10 @@ end
 local TREE_NAMES = {"Tree_1_C_Color1", "Tree_2_E_Color1", "Tree_4_B_Color1", "Tree_Bare_1_A_Color1"}
 local ROCK_NAMES = {"Rock_1_A_Color1", "Rock_1_Q_Color1", "Rock_2_A_Color1"}
 
+-- Rotation correctrice : le pack a été exporté avec Z comme axe "haut"
+-- (convention Blender), Roblox utilise Y. Sans ceci, tout est couché.
+local UP_AXIS_CORRECTION = CFrame.Angles(math.rad(-90), 0, 0)
+
 local function clonePrefab(name)
 	local p = Prefabs:FindFirstChild(name)
 	if not p then
@@ -32,6 +39,20 @@ local function clonePrefab(name)
 		return nil
 	end
 	return p:Clone()
+end
+
+local function scaleToHeight(model, targetHeight)
+	if not model:IsA("Model") then return end
+	local ok, size = pcall(function()
+		local _, s = model:GetBoundingBox()
+		return s
+	end)
+	if ok and size and size.Y > 0 then
+		local factor = targetHeight / size.Y
+		pcall(function()
+			model:ScaleTo(factor)
+		end)
+	end
 end
 
 local function anchorAll(model)
@@ -75,9 +96,12 @@ local function generateForest(parentFolder)
 		local dist = CONFIG.FOREST_MIN_RADIUS + math.random() * (CONFIG.FOREST_MAX_RADIUS - CONFIG.FOREST_MIN_RADIUS)
 		local x = math.cos(angle) * dist
 		local z = math.sin(angle) * dist
-		local tree = clonePrefab(TREE_NAMES[math.random(1, #TREE_NAMES)])
+		local nameIndex = math.random(1, #TREE_NAMES)
+		local tree = clonePrefab(TREE_NAMES[nameIndex])
 		if tree then
-			placeAt(tree, CFrame.new(x, 0, z), parentFolder)
+			scaleToHeight(tree, CONFIG.TARGET_TREE_HEIGHT)
+			local randomYaw = CFrame.Angles(0, math.random() * math.pi * 2, 0)
+			placeAt(tree, CFrame.new(x, 0, z) * randomYaw * UP_AXIS_CORRECTION, parentFolder)
 			CollectionService:AddTag(tree, "Collectable")
 			tree:SetAttribute("ResourceType", "Wood")
 		end
@@ -90,9 +114,12 @@ local function generateRocks(parentFolder)
 		local dist = CONFIG.FOREST_MIN_RADIUS + math.random() * (CONFIG.FOREST_MAX_RADIUS - CONFIG.FOREST_MIN_RADIUS)
 		local x = math.cos(angle) * dist
 		local z = math.sin(angle) * dist
-		local rock = clonePrefab(ROCK_NAMES[math.random(1, #ROCK_NAMES)])
+		local nameIndex = math.random(1, #ROCK_NAMES)
+		local rock = clonePrefab(ROCK_NAMES[nameIndex])
 		if rock then
-			placeAt(rock, CFrame.new(x, 0, z), parentFolder)
+			scaleToHeight(rock, CONFIG.TARGET_ROCK_HEIGHT)
+			local randomYaw = CFrame.Angles(0, math.random() * math.pi * 2, 0)
+			placeAt(rock, CFrame.new(x, 0, z) * randomYaw * UP_AXIS_CORRECTION, parentFolder)
 			CollectionService:AddTag(rock, "Collectable")
 			rock:SetAttribute("ResourceType", "Stone")
 		end
@@ -132,8 +159,6 @@ local function generateWorld()
 		bp.Parent = workspace
 	end
 
-	-- Zone centrale du village : juste une place vide pour l'instant.
-	-- Les bâtiments seront ajoutés une fois House_Template prête.
 	local villageFolder = Instance.new("Folder")
 	villageFolder.Name = "Village"
 	villageFolder.Parent = workspace
@@ -153,7 +178,7 @@ local function generateWorld()
 	spawnsFolder.Parent = workspace
 	generateMonsterSpawns(spawnsFolder)
 
-	print("[WorldBuilder] Terrain, forêt (" .. CONFIG.TREE_COUNT .. " arbres), rochers (" .. CONFIG.ROCK_COUNT .. ") générés. Place du village vide, en attente de House_Template.")
+	print("[WorldBuilder] Terrain, forêt (" .. CONFIG.TREE_COUNT .. " arbres), rochers (" .. CONFIG.ROCK_COUNT .. ") générés, orientation corrigée.")
 end
 
 generateWorld()
