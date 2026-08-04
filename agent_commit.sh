@@ -1,12 +1,16 @@
 #!/bin/bash
+# Usage: ./agent_commit.sh "message" [fichier1 fichier2 ...]
+# Si aucun fichier n'est précisé, committe tout (comportement historique).
 
-# 1. Vérifier s'il y a des modifications
+COMMIT_MSG="${1:-[Auto-Agent] Mise à jour}"
+shift
+FILES_TO_ADD="$@"
+
 if [[ -z $(git status -s) ]]; then
   echo "⚠️  Aucune modification à committer."
   exit 0
 fi
 
-# 2. Lancer les vérifications statiques (bloquant)
 echo "🛡️  Exécution des garde-fous..."
 python3 static_checks.py
 if [ $? -ne 0 ]; then
@@ -14,17 +18,16 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# 3. Message de commit (passé en argument, ou générique par défaut)
-COMMIT_MSG="${1:-[Auto-Agent] Mise à jour validée par les tests}"
+if [ -n "$FILES_TO_ADD" ]; then
+  git add $FILES_TO_ADD
+else
+  git add .
+fi
 
-# 4. Commit
-git add .
 git commit -m "$COMMIT_MSG"
-
-# 5. Push automatique
 git push origin master
 if [ $? -ne 0 ]; then
-  echo "⚠️  Commit local OK, mais le push a échoué (identifiants ? réseau ?)."
+  echo "⚠️  Commit local OK, mais le push a échoué."
   exit 1
 fi
 
