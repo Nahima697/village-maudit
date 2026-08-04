@@ -20,7 +20,7 @@ echo ""
 
 MODIFIED_FILES=""
 
-while IFS= read -r line; do
+while IFS= read -r line || [ -n "$line" ]; do
     FILE=$(echo "$line" | sed -n 's/.*FILE: *\([^|]*\).*/\1/p' | xargs)
     TASK=$(echo "$line" | sed -n 's/.*TASK: *\(.*\)/\1/p')
     [ -z "$FILE" ] || [ -z "$TASK" ] && continue
