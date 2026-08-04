@@ -21,6 +21,11 @@ local EXCLUDED_NAMES = {
 	Terrain = true, Camera = true, MedievalHouse = true,
 	BasePlate = true, Baseplate = true, MonsterSpawns = true,
 	Campfires = true, Hazards = true,
+	-- Ces deux objets sont des environnements complets pré-construits
+	-- (sol + murs + décor intégrés), pas de simples props : à positionner
+	-- une seule fois à la main, jamais recalculés en cercle automatique.
+	["Forest Portal Template"] = true,
+	["Graveyard Map"] = true,
 }
 
 local ZONES = {
