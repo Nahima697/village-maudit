@@ -153,18 +153,44 @@ local function arrangeLooseObjects()
 		local zone = ZONES[zoneName]
 		local count = #objects
 		if count > 0 then
-			local angleSpan = math.rad(zone.angleMax - zone.angleMin)
-			local angleStart = math.rad(zone.angleMin)
+			-- Calcule un "diamètre" approximatif pour chaque objet, pour lui
+			-- donner un espace angulaire proportionnel à sa taille réelle
+			-- (évite qu'un gros objet chevauche son voisin).
+			local diameters = {}
+			local totalDiameter = 0
+			for _, obj in ipairs(objects) do
+				local d = 8
+				if obj:IsA("Model") then
+					local _, size = obj:GetBoundingBox()
+					d = math.max(size.X, size.Z)
+				elseif obj:IsA("BasePart") then
+					d = math.max(obj.Size.X, obj.Size.Z)
+				end
+				d = math.max(d, 4) + 6 -- marge de sécurité entre objets
+				table.insert(diameters, d)
+				totalDiameter = totalDiameter + d
+			end
 
+			local radius = (zone.radiusMin + zone.radiusMax) / 2
+			-- Si la somme des diamètres dépasse la circonférence disponible,
+			-- on agrandit le rayon pour que tout tienne sans se chevaucher.
+			local circumference = math.rad(zone.angleMax - zone.angleMin) * radius
+			if totalDiameter > circumference and circumference > 0 then
+				radius = totalDiameter / math.rad(zone.angleMax - zone.angleMin)
+			end
+
+			local angleStart = math.rad(zone.angleMin)
+			local currentAngle = angleStart
 			for i, obj in ipairs(objects) do
-				local angle = angleStart + (i - 1) * (angleSpan / math.max(count, 1))
-				local radius = zone.radiusMin + math.random() * (zone.radiusMax - zone.radiusMin)
+				local angleStep = diameters[i] / radius
+				local angle = currentAngle + angleStep / 2
 				local x = CONFIG.CENTER.X + math.cos(angle) * radius
 				local z = CONFIG.CENTER.Z + math.sin(angle) * radius
 				placeOnGround(obj, x, z)
+				currentAngle = currentAngle + angleStep
 			end
 
-			print("[WorldBuilder] Zone '" .. zoneName .. "' : " .. count .. " objet(s) placé(s).")
+			print("[WorldBuilder] Zone '" .. zoneName .. "' : " .. count .. " objet(s) placé(s) (rayon ajusté: " .. math.floor(radius) .. ").")
 			totalCount = totalCount + count
 		end
 	end
