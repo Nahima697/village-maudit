@@ -71,3 +71,4 @@ generateMonsterSpawns()
 tagVillageDoor()
 
 print("[WorldBuilder] Sol + points de spawn + tag Door prêts. Aucun objet du village n'est déplacé - placement 100% manuel.")
+workspace:SetAttribute("WorldReady", true)
