@@ -291,13 +291,13 @@ local function initializeDoors()
 	-- Attendre que le monde soit généré
 	local maxWaitTime = 30
 	local waited = 0
-	while not workspace:FindFirstChild("Village") and waited < maxWaitTime do
+	while not workspace:GetAttribute("WorldReady") and waited < maxWaitTime do
 		task.wait(0.5)
 		waited = waited + 0.5
 	end
 	
-	if not workspace:FindFirstChild("Village") then
-		warn("[MonsterSpawner] Village non trouvé après", maxWaitTime, "secondes")
+	if not workspace:GetAttribute("WorldReady") then
+		warn("[MonsterSpawner] WorldReady non reçu après", maxWaitTime, "secondes, on cherche quand même les portes")
 	end
 	
 	-- Trouver toutes les portes
