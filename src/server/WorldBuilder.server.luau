@@ -56,6 +56,9 @@ end
 local function tagVillageDoor()
 	local door = workspace:FindFirstChild("Door")
 	if door then
+		if door:IsA("Model") and not door.PrimaryPart then
+			door.PrimaryPart = door:FindFirstChild("Planks") or door:FindFirstChildWhichIsA("BasePart", true)
+		end
 		CollectionService:AddTag(door, "Door")
 		local part = door:IsA("Model") and (door.PrimaryPart or door:FindFirstChildWhichIsA("BasePart", true)) or door
 		if part then
