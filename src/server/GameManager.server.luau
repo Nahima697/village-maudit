@@ -5,6 +5,24 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+
+local function setDayLighting()
+	Lighting.ClockTime = 12
+	Lighting.Brightness = 2
+	Lighting.Ambient = Color3.fromRGB(150, 150, 150)
+	Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 150)
+	Lighting.FogEnd = 100000
+end
+
+local function setNightLighting()
+	Lighting.ClockTime = 0
+	Lighting.Brightness = 1.5
+	Lighting.Ambient = Color3.fromRGB(60, 60, 90)
+	Lighting.OutdoorAmbient = Color3.fromRGB(60, 60, 90)
+	Lighting.FogEnd = 800
+	Lighting.FogColor = Color3.fromRGB(30, 30, 50)
+end
 
 -- ============================================================
 -- SECTION 1 : CRÉATION DES RESSOURCES GLOBALES (ANTI-CRASH)
@@ -172,6 +190,7 @@ end
 -- Démarre la phase de jour
 local startDayPhase, startVotingPhase, startNightPhase
 function startDayPhase()
+	setDayLighting()
 	updatePhaseAttribute("DAY_PHASE")
 	
 	local dayDuration = PHASE_DURATION.Day or 120
@@ -239,6 +258,7 @@ end
 
 -- Démarre la phase de nuit
 function startNightPhase()
+	setNightLighting()
 	updatePhaseAttribute("NIGHT_PHASE")
 	
 	nightCount = nightCount + 1
