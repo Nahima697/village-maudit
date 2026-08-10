@@ -14,6 +14,7 @@ local mouse = player:GetMouse()
 local RemoteEventsFolder = ReplicatedStorage:WaitForChild("RemoteEvents")
 local CollectResourceEvent = RemoteEventsFolder:WaitForChild("CollectResourceEvent")
 local CraftItemEvent = RemoteEventsFolder:WaitForChild("CraftItemEvent")
+local CraftSuccessEvent = RemoteEventsFolder:WaitForChild("CraftSuccessEvent")
 
 local CRAFT_RECIPES = {
     {Name = "Barricade", Wood = 5, Stone = 0, Description = "Barricade temporaire (60s)"},
@@ -213,5 +214,12 @@ mouse.Button1Down:Connect(function()
     local target = mouse.Target
     if target and target:IsA("BasePart") then
         CollectResourceEvent:FireServer(target)
+    end
+end)
+
+CraftSuccessEvent.OnClientEvent:Connect(function(success, message)
+    if success then
+        task.wait(0.5)
+        craftFrame.Visible = false
     end
 end)
