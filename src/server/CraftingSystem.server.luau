@@ -7,6 +7,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
+local CollectionService = game:GetService("CollectionService")
 
 -- Remote Events
 local remoteEventsFolder = ReplicatedStorage:FindFirstChild("RemoteEvents")
@@ -383,7 +384,17 @@ local function autoEquipTool(player, tool)
 end
 
 -- === COLLECTE DE RESSOURCES ===
-collectResourceEvent.OnServerEvent:Connect(function(player, resourceType)
+collectResourceEvent.OnServerEvent:Connect(function(player, targetPart)
+    -- Vérifier que targetPart existe et est une BasePart
+    if not targetPart or not targetPart:IsA("BasePart") then
+        return
+    end
+    
+    -- Vérifier que c'est bien un ResourceNode
+    if not CollectionService:HasTag(targetPart, "ResourceNode") then
+        return
+    end
+    
     local userId = player.UserId
     local now = tick()
     
@@ -400,6 +411,9 @@ collectResourceEvent.OnServerEvent:Connect(function(player, resourceType)
         warn("[CraftingSystem] Inventaire introuvable pour:", player.Name)
         return
     end
+    
+    -- Lire le type de ressource depuis l'attribut
+    local resourceType = targetPart:GetAttribute("ResourceType")
     
     -- Ajouter la ressource
     if resourceType == "Wood" or resourceType == "Bois" then
