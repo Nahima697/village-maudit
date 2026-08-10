@@ -172,7 +172,7 @@ end
 -- Démarre la phase de jour
 local startDayPhase, startVotingPhase, startNightPhase
 function startDayPhase()
-	updatePhaseAttribute("Day")
+	updatePhaseAttribute("DAY_PHASE")
 	
 	local dayDuration = PHASE_DURATION.Day or 120
 	updateTimeAttribute(dayDuration)
@@ -212,7 +212,7 @@ end
 
 -- Démarre la phase de vote
 function startVotingPhase()
-	updatePhaseAttribute("Voting")
+	updatePhaseAttribute("VOTE_PHASE")
 	
 	local voteDuration = PHASE_DURATION.Voting or 60
 	updateTimeAttribute(voteDuration)
@@ -239,7 +239,7 @@ end
 
 -- Démarre la phase de nuit
 function startNightPhase()
-	updatePhaseAttribute("Night")
+	updatePhaseAttribute("NIGHT_PHASE")
 	
 	nightCount = nightCount + 1
 	sharedData:SetAttribute("NightCount", nightCount)
@@ -365,6 +365,7 @@ local function initializePlayers()
 		local role = (i <= traitorCount) and "Traitor" or "Innocent"
 		playerRoles[player] = role
 		alivePlayers[player] = true
+		player:SetAttribute("IsAlive", true)
 		
 		if AssignRoleEvent then
 			AssignRoleEvent:FireClient(player, role)
