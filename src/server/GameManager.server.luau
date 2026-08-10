@@ -16,12 +16,12 @@ local function setDayLighting()
 end
 
 local function setNightLighting()
-	Lighting.ClockTime = 0
-	Lighting.Brightness = 1.5
-	Lighting.Ambient = Color3.fromRGB(60, 60, 90)
-	Lighting.OutdoorAmbient = Color3.fromRGB(60, 60, 90)
-	Lighting.FogEnd = 800
-	Lighting.FogColor = Color3.fromRGB(30, 30, 50)
+	Lighting.ClockTime = 21
+	Lighting.Brightness = 3
+	Lighting.Ambient = Color3.fromRGB(110, 110, 150)
+	Lighting.OutdoorAmbient = Color3.fromRGB(110, 110, 150)
+	Lighting.FogEnd = 2000
+	Lighting.FogColor = Color3.fromRGB(60, 60, 90)
 end
 
 -- ============================================================
