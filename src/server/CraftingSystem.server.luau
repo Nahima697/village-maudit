@@ -44,8 +44,18 @@ if not craftSuccessEvent then
     craftSuccessEvent.Parent = remoteEventsFolder
 end
 
+local collectResourceEvent = remoteEventsFolder:FindFirstChild("CollectResourceEvent")
+if not collectResourceEvent then
+    collectResourceEvent = Instance.new("RemoteEvent")
+    collectResourceEvent.Name = "CollectResourceEvent"
+    collectResourceEvent.Parent = remoteEventsFolder
+end
+
 -- Inventaire des joueurs
 local playerInventories = {}
+
+-- Cooldowns pour la collecte de ressources
+local collectCooldowns = {}
 
 -- Recettes de craft
 local recipes = {
@@ -81,12 +91,26 @@ local itemsNeedingPlacement = {
 -- Placements en attente
 local pendingPlacements = {}
 
+-- === SYNCHRONISATION DES RESSOURCES VERS ATTRIBUTS ===
+local function syncResourceAttributes(player)
+    local inventory = playerInventories[player.UserId]
+    if not inventory then return end
+    
+    player:SetAttribute("Wood", inventory.Bois)
+    player:SetAttribute("Stone", inventory.Pierre)
+    
+    print("[CraftingSystem] Attributs synchronisés pour:", player.Name, "- Bois:", inventory.Bois, "Pierre:", inventory.Pierre)
+end
+
 -- === INITIALISATION JOUEUR ===
 local function initializePlayer(player)
     playerInventories[player.UserId] = {
         Bois = 10,
         Pierre = 5
     }
+    
+    syncResourceAttributes(player)
+    
     print("[CraftingSystem] Inventaire initialisé pour:", player.Name)
 end
 
@@ -340,6 +364,8 @@ local function consumeResources(player, recipe)
         inventory[resource] = inventory[resource] - amount
     end
     
+    syncResourceAttributes(player)
+    
     print("[CraftingSystem] Ressources consommées pour:", player.Name)
 end
 
@@ -355,6 +381,40 @@ local function autoEquipTool(player, tool)
         print("[CraftingSystem] Outil équipé automatiquement:", tool.Name, "pour", player.Name)
     end
 end
+
+-- === COLLECTE DE RESSOURCES ===
+collectResourceEvent.OnServerEvent:Connect(function(player, resourceType)
+    local userId = player.UserId
+    local now = tick()
+    
+    -- Vérifier le cooldown
+    if collectCooldowns[userId] and (now - collectCooldowns[userId]) < 1 then
+        warn("[CraftingSystem] Cooldown actif pour:", player.Name)
+        return
+    end
+    
+    collectCooldowns[userId] = now
+    
+    local inventory = playerInventories[userId]
+    if not inventory then
+        warn("[CraftingSystem] Inventaire introuvable pour:", player.Name)
+        return
+    end
+    
+    -- Ajouter la ressource
+    if resourceType == "Wood" or resourceType == "Bois" then
+        inventory.Bois = inventory.Bois + 1
+        print("[CraftingSystem] +1 Bois collecté par:", player.Name)
+    elseif resourceType == "Stone" or resourceType == "Pierre" then
+        inventory.Pierre = inventory.Pierre + 1
+        print("[CraftingSystem] +1 Pierre collectée par:", player.Name)
+    else
+        warn("[CraftingSystem] Type de ressource inconnu:", resourceType)
+        return
+    end
+    
+    syncResourceAttributes(player)
+end)
 
 -- === CRAFT D'UN ITEM ===
 craftItemEvent.OnServerEvent:Connect(function(player, itemName)
@@ -430,6 +490,7 @@ end)
 Players.PlayerRemoving:Connect(function(player)
     playerInventories[player.UserId] = nil
     pendingPlacements[player.UserId] = nil
+    collectCooldowns[player.UserId] = nil
 end)
 
 print("[CraftingSystem] ✓ Système de craft serveur initialisé")
