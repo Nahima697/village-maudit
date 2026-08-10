@@ -144,33 +144,36 @@ local function createLance()
     
     tip.Position = handle.Position + Vector3.new(0, 3.5, 0)
     
-    -- Script de dégâts (basique)
-    local script = Instance.new("Script")
-    script.Source = [[
-        local tool = script.Parent
-        local damage = 20
+    -- Logique de dégâts directement en Luau serveur
+    lance.Activated:Connect(function()
+        local character = lance.Parent
+        local humanoid = character and character:FindFirstChild("Humanoid")
+        if not humanoid then return end
         
-        tool.Activated:Connect(function()
-            local character = tool.Parent
-            local humanoid = character and character:FindFirstChild("Humanoid")
-            if not humanoid then return end
-            
-            -- Raycast pour détecter un ennemi
-            local rootPart = character:FindFirstChild("HumanoidRootPart")
-            if not rootPart then return end
-            
-            local ray = Ray.new(rootPart.Position, rootPart.CFrame.LookVector * 10)
-            local hit, position = workspace:FindPartOnRay(ray, character)
-            
+        -- Raycast pour détecter un ennemi
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        if not rootPart then return end
+        
+        local rayOrigin = rootPart.Position
+        local rayDirection = rootPart.CFrame.LookVector * 10
+        
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterDescendantsInstances = {character}
+        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+        
+        local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+        
+        if raycastResult then
+            local hit = raycastResult.Instance
             if hit then
                 local enemyHumanoid = hit.Parent:FindFirstChild("Humanoid")
                 if enemyHumanoid and enemyHumanoid ~= humanoid then
-                    enemyHumanoid:TakeDamage(damage)
+                    enemyHumanoid:TakeDamage(20)
+                    print("[CraftingSystem] Lance: dégâts infligés à", hit.Parent.Name)
                 end
             end
-        end)
-    ]]
-    script.Parent = lance
+        end
+    end)
     
     return lance
 end
@@ -283,27 +286,24 @@ local function createPiege(position)
         end
     end
     
-    -- Script de dégâts
-    local script = Instance.new("Script")
-    script.Source = [[
-        local piege = script.Parent
-        local damage = 30
-        local debounce = {}
-        
-        piege.Base.Touched:Connect(function(hit)
-            local humanoid = hit.Parent:FindFirstChild("Humanoid")
-            if humanoid then
-                local player = game.Players:GetPlayerFromCharacter(hit.Parent)
-                if player and not debounce[player.UserId] then
-                    debounce[player.UserId] = true
-                    humanoid:TakeDamage(damage)
-                    wait(2)
+    -- Logique de dégâts directement en Luau serveur
+    local debounce = {}
+    
+    base.Touched:Connect(function(hit)
+        local humanoid = hit.Parent:FindFirstChild("Humanoid")
+        if humanoid then
+            local player = Players:GetPlayerFromCharacter(hit.Parent)
+            if player and not debounce[player.UserId] then
+                debounce[player.UserId] = true
+                humanoid:TakeDamage(30)
+                print("[CraftingSystem] Piège: dégâts infligés à", player.Name)
+                
+                task.delay(2, function()
                     debounce[player.UserId] = nil
-                end
+                end)
             end
-        end)
-    ]]
-    script.Parent = piege
+        end
+    end)
     
     piege.PrimaryPart = base
     piege.Parent = workspace
