@@ -33,18 +33,18 @@ end
 -- ============================================================================
 
 local function ensureBaseplate()
-	if workspace:FindFirstChild("BasePlate") or workspace:FindFirstChild("Baseplate") then
-		return
+	local bp = workspace:FindFirstChild("BasePlate") or workspace:FindFirstChild("Baseplate")
+	if not bp then
+		bp = Instance.new("Part")
+		bp.Name = "BasePlate"
+		bp.Size = Vector3.new(400, 1, 400)
+		bp.Position = Vector3.new(0, -0.5, 0)
+		bp.Anchored = true
+		bp.Material = Enum.Material.Grass
+		bp.Parent = workspace
+		print("[WorldBuilder] BasePlate créé.")
 	end
-	local bp = Instance.new("Part")
-	bp.Name = "BasePlate"
-	bp.Size = Vector3.new(400, 1, 400)
-	bp.Position = Vector3.new(0, -0.5, 0)
-	bp.Anchored = true
 	bp.Color = Color3.fromRGB(70, 85, 50)
-	bp.Material = Enum.Material.Grass
-	bp.Parent = workspace
-	print("[WorldBuilder] BasePlate créé.")
 end
 
 -- ============================================================================
