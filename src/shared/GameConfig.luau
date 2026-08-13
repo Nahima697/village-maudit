@@ -24,13 +24,14 @@ GameConfig.MONSTER_MAX_COUNT = 8
 GameConfig.NIGHTS_TO_SURVIVE = 5
 
 
--- Audio (remplace ces IDs par de vrais sons choisis dans Studio > Toolbox > Audio)
+-- Audio
 GameConfig.SOUNDS = {
-	DayAmbient = "rbxassetid://0",
-	NightAmbient = "rbxassetid://0",
-	MonsterGrowl = "rbxassetid://0",
-	VoteStart = "rbxassetid://0",
-	CraftSuccess = "rbxassetid://0",
+	DayAmbient = "rbxassetid://110778299733422",    -- Broken Generator Hum
+	NightAmbient = "rbxassetid://140226003563104",  -- Scary Spooky Dark Horror Thriller
+	MonsterGrowl = "rbxassetid://71374905925238",   -- The Chase Protocol
+	VoteStart = "rbxassetid://140115427069802",     -- Tension
+	CraftSuccess = "rbxassetid://0",                -- TODO : pas encore de son de ding court
+	TraitorWhisper = "rbxassetid://140440238391729", -- Horror Sound Effect - Voices (Whispers), pas encore cablé
 }
 
 return GameConfig
