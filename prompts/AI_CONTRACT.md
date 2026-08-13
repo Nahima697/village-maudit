@@ -25,3 +25,16 @@ Le projet utilise plusieurs scripts autonomes (`.server.luau`) qui démarrent en
 
 ## 6. Commit /Push
 * **Tu n'as pas le droit d'exécuter git commit ou git push directement à la main. Tu dois obligatoirement lancer ./agent_commit.sh pour que les garde-fous et les tests valident ton travail avant publication.
+
+## 7. Interfaces React (pilote en cours)
+* Les nouvelles interfaces client peuvent utiliser React (paquets Wally
+  ReplicatedStorage.Packages.React / ReplicatedStorage.Packages.ReactRoblox).
+* Luau pur, PAS de JSX (pas de compilateur roblox-ts dans ce projet) : utilise
+  React.createElement(type, props, children).
+* Les composants sont des ModuleScripts (.luau simple, sans suffixe .client/.server)
+  placés dans src/client/Components/.
+* Le fichier .client.luau reste le point d'entrée : il monte l'arbre via
+  ReactRoblox.createRoot(...):render(...) et ne contient plus d'Instance.new() manuel
+  pour l'UI elle-même.
+* Les systèmes déjà en Instance.new() classique (CraftingClient, VotingClient) ne sont
+  PAS migrés tant que le pilote React n'est pas validé.
