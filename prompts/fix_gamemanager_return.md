@@ -1,2 +1,4 @@
-# 1. Retrait du return final
-Le fichier `src/server/GameManager.server.luau` est un Script (auto-exécutable) et non un ModuleScript. Il plante à cause du système de vérification car il se termine par un `return`. Supprime le `return` à la toute fin du fichier. Ne modifie strictement rien d'autre, conserve bien l'appel au `WorldBuilder`.
+Ce fichier src/server/GameManager.server.luau est un Script auto-exécutable (.server.luau),
+PAS un ModuleScript. La génération précédente a laissé un "return ..." en toute fin de
+fichier, ce qui est invalide pour ce type de script. Supprime UNIQUEMENT cette ligne
+finale de return, sans rien changer d'autre au contenu ni à la logique.
