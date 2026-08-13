@@ -1,381 +1,3 @@
---[[
-	WorldBuilder.server.luau
-	Génère la map complète de Village Maudit en GRAYBOX (blocs simples).
-	Utilise MapConfig pour toutes les positions/tailles.
-	Maintient la compatibilité avec MonsterSpawner et VotingSystem (workspace:SetAttribute("WorldReady", true)).
-]]
-
-local CollectionService = game:GetService("CollectionService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
--- Charger la configuration de la map
-local MapConfig = require(script.Parent.WorldGen.MapConfig)
-local HouseGenerator = require(script.Parent.WorldGen.HouseGenerator)
-
--- ============================================================================
--- UTILITAIRES
--- ============================================================================
-
-local function clearExistingWorld()
-	local foldersToClean = {
-		"River", "OldBridge", "CentralSquare", "SacredFire", 
-		"Houses", "Workshop", "Cemetery", "CursedForest", "MonsterSpawns", "Paths"
-	}
-	for _, folderName in ipairs(foldersToClean) do
-		local existing = workspace:FindFirstChild(folderName)
-		if existing then
-			existing:Destroy()
-		end
-	end
-end
-
--- ============================================================================
--- SOL
--- ============================================================================
-
-local function ensureBaseplate()
-	local bp = workspace:FindFirstChild("BasePlate") or workspace:FindFirstChild("Baseplate")
-	if not bp then
-		bp = Instance.new("Part")
-		bp.Name = "BasePlate"
-		bp.Size = Vector3.new(400, 1, 400)
-		bp.Position = Vector3.new(0, -0.5, 0)
-		bp.Anchored = true
-		bp.Material = Enum.Material.Grass
-		bp.Parent = workspace
-		print("[WorldBuilder] BasePlate créé.")
-	end
-	bp.Color = Color3.fromRGB(70, 85, 50)
-end
-
--- ============================================================================
--- RIVIÈRE
--- ============================================================================
-
-local function generateRiver()
-	local riverFolder = Instance.new("Folder")
-	riverFolder.Name = "River"
-	riverFolder.Parent = workspace
-
-	for i = 1, #MapConfig.RIVER_PATH - 1 do
-		local p1 = MapConfig.RIVER_PATH[i]
-		local p2 = MapConfig.RIVER_PATH[i + 1]
-		local midpoint = (p1 + p2) / 2
-		local distance = (p2 - p1).Magnitude
-
-		local segment = Instance.new("Part")
-		segment.Name = "RiverSegment_" .. i
-		segment.Size = Vector3.new(MapConfig.RIVER_WIDTH, 0.5, distance)
-		segment.Position = midpoint
-		segment.CFrame = CFrame.lookAt(midpoint, p2) * CFrame.Angles(math.rad(90), 0, 0)
-		segment.Anchored = true
-		segment.CanCollide = false
-		segment.Material = Enum.Material.Water
-		segment.Color = Color3.fromRGB(30, 50, 100)
-		segment.Transparency = 0.3
-		segment.Parent = riverFolder
-	end
-
-	print("[WorldBuilder] Rivière générée avec " .. (#MapConfig.RIVER_PATH - 1) .. " segments.")
-end
-
--- ============================================================================
--- PONT + PORTE
--- ============================================================================
-
-local function generateBridge()
-	local bridgeFolder = Instance.new("Folder")
-	bridgeFolder.Name = "OldBridge"
-	bridgeFolder.Parent = workspace
-
-	-- Pont principal
-	local bridge = Instance.new("Part")
-	bridge.Name = "BridgeDeck"
-	bridge.Size = Vector3.new(MapConfig.BRIDGE_WIDTH, 1, 20)
-	bridge.Position = MapConfig.BRIDGE_POSITION
-	bridge.Anchored = true
-	bridge.CanCollide = true
-	bridge.Material = Enum.Material.Wood
-	bridge.Color = Color3.fromRGB(120, 80, 40)
-	bridge.Parent = bridgeFolder
-
-	-- Porte/barrière côté village (extrémité sud du pont)
-	local doorPos = MapConfig.BRIDGE_POSITION + Vector3.new(0, 2, -10)
-	local door = Instance.new("Part")
-	door.Name = "Door"
-	door.Size = Vector3.new(MapConfig.BRIDGE_WIDTH - 2, 4, 1)
-	door.Position = doorPos
-	door.Anchored = true
-	door.CanCollide = true
-	door.Material = Enum.Material.Wood
-	door.Color = Color3.fromRGB(80, 50, 20)
-	door.Parent = bridgeFolder
-
-	-- Tagguer et attributs pour MonsterSpawner
-	CollectionService:AddTag(door, "Door")
-	door:SetAttribute("Health", 500)
-	door:SetAttribute("MaxHealth", 500)
-
-	print("[WorldBuilder] Pont et porte générés, porte taguée pour MonsterSpawner.")
-end
-
--- ============================================================================
--- PLACE CENTRALE + BRASIER
--- ============================================================================
-
-local function generateCentralSquare()
-	local squareFolder = Instance.new("Folder")
-	squareFolder.Name = "CentralSquare"
-	squareFolder.Parent = workspace
-
-	-- Sol de la place (cylindre plat)
-	local square = Instance.new("Part")
-	square.Name = "SquareFloor"
-	square.Shape = Enum.PartType.Cylinder
-	square.Size = Vector3.new(0.5, MapConfig.VILLAGE_RADIUS * 2, MapConfig.VILLAGE_RADIUS * 2)
-	square.Position = MapConfig.VILLAGE_CENTER
-	square.Orientation = Vector3.new(0, 0, 90)
-	square.Anchored = true
-	square.CanCollide = true
-	square.Material = Enum.Material.Cobblestone
-	square.Color = Color3.fromRGB(150, 140, 130)
-	square.Parent = squareFolder
-
-	print("[WorldBuilder] Place centrale générée.")
-end
-
-local function generateSacredFire()
-	local fireFolder = Instance.new("Folder")
-	fireFolder.Name = "SacredFire"
-	fireFolder.Parent = workspace
-
-	local center = MapConfig.VILLAGE_CENTER
-	local stoneRingRadius = 3
-	local stoneCount = 8
-
-	-- Anneau de pierres (foyer)
-	for i = 1, stoneCount do
-		local angle = (i - 1) * (math.pi * 2 / stoneCount)
-		local x = center.X + math.cos(angle) * stoneRingRadius
-		local z = center.Z + math.sin(angle) * stoneRingRadius
-
-		local stone = Instance.new("Part")
-		stone.Name = "FireStone_" .. i
-		stone.Shape = Enum.PartType.Cylinder
-		stone.Size = Vector3.new(1.5, 2, 2)
-		stone.Position = Vector3.new(x, 0.75, z)
-		stone.Orientation = Vector3.new(0, 0, 90)
-		stone.Anchored = true
-		stone.CanCollide = true
-		stone.Material = Enum.Material.Slate
-		stone.Color = Color3.fromRGB(80, 80, 80)
-		stone.Parent = fireFolder
-	end
-
-	-- Bois qui brûle (tas de bûches au centre)
-	local logPositions = {
-		{offset = Vector3.new(0, 0.3, 0), rotation = Vector3.new(0, 0, 0)},
-		{offset = Vector3.new(0.5, 0.3, 0.3), rotation = Vector3.new(0, 45, 0)},
-		{offset = Vector3.new(-0.4, 0.3, -0.3), rotation = Vector3.new(0, -30, 0)},
-		{offset = Vector3.new(0.2, 0.8, 0.1), rotation = Vector3.new(0, 60, 10)},
-	}
-
-	for i, logData in ipairs(logPositions) do
-		local log = Instance.new("Part")
-		log.Name = "FireLog_" .. i
-		log.Shape = Enum.PartType.Cylinder
-		log.Size = Vector3.new(0.4, 2, 0.4)
-		log.Position = center + logData.offset
-		log.Orientation = logData.rotation
-		log.Anchored = true
-		log.CanCollide = false
-		log.Material = Enum.Material.Wood
-		log.Color = Color3.fromRGB(60, 40, 20)
-		log.Parent = fireFolder
-	end
-
-	-- Flammes (Neon orange)
-	local flames = Instance.new("Part")
-	flames.Name = "FireFlames"
-	flames.Shape = Enum.PartType.Ball
-	flames.Size = Vector3.new(2, 2.5, 2)
-	flames.Position = center + Vector3.new(0, 1.5, 0)
-	flames.Anchored = true
-	flames.CanCollide = false
-	flames.Material = Enum.Material.Neon
-	flames.Color = Color3.fromRGB(255, 100, 0)
-	flames.Transparency = 0.2
-	flames.Parent = fireFolder
-
-	-- Particules de braises
-	local emitter = Instance.new("ParticleEmitter")
-	emitter.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 150, 50)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 80, 0)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 30, 0))
-	})
-	emitter.Size = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.3),
-		NumberSequenceKeypoint.new(1, 0.1)
-	})
-	emitter.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.3),
-		NumberSequenceKeypoint.new(1, 1)
-	})
-	emitter.Lifetime = NumberRange.new(1, 2)
-	emitter.Rate = 40
-	emitter.Speed = NumberRange.new(2, 4)
-	emitter.SpreadAngle = Vector2.new(30, 30)
-	emitter.VelocityInheritance = 0
-	emitter.Acceleration = Vector3.new(0, 3, 0)
-	emitter.LightEmission = 1
-	emitter.Parent = flames
-
-	-- Lumière améliorée
-	local light = Instance.new("PointLight")
-	light.Color = Color3.fromRGB(255, 120, 50)
-	light.Brightness = 3
-	light.Range = 45
-	light.Shadows = true
-	light.Parent = flames
-
-	print("[WorldBuilder] Brasier sacré généré avec anneau de pierre, bûches, flammes et particules.")
-end
-
--- ============================================================================
--- MAISONS
--- ============================================================================
-
-local function generateHouses()
-	local housesFolder = Instance.new("Folder")
-	housesFolder.Name = "Houses"
-	housesFolder.Parent = workspace
-
-	for i, zone in ipairs(MapConfig.HOUSE_ZONES) do
-		local modelType = ((i - 1) % 5) + 1
-		local houseModel = HouseGenerator.Create(modelType, zone.Position, zone.Size, zone.Rotation)
-		houseModel.Parent = housesFolder
-	end
-
-	print("[WorldBuilder] " .. #MapConfig.HOUSE_ZONES .. " maisons générées avec HouseGenerator.")
-end
-
--- ============================================================================
--- CHEMINS
--- ============================================================================
-
-local function generatePaths()
-	local pathsFolder = Instance.new("Folder")
-	pathsFolder.Name = "Paths"
-	pathsFolder.Parent = workspace
-
-	local pathColor = Color3.fromRGB(90, 65, 45)
-	local pathHeight = 0.3
-	local pathYOffset = 0.2
-
-	-- Fonction utilitaire pour créer un segment de chemin
-	local function createPathSegment(p1, p2, width, name)
-		local midpoint = (p1 + p2) / 2 + Vector3.new(0, pathYOffset, 0)
-		local distance = (p2 - p1).Magnitude
-
-		local segment = Instance.new("Part")
-		segment.Name = name
-		segment.Size = Vector3.new(width, pathHeight, distance)
-		segment.Position = midpoint
-		segment.CFrame = CFrame.lookAt(midpoint, p2 + Vector3.new(0, pathYOffset, 0)) * CFrame.Angles(math.rad(90), 0, 0)
-		segment.Anchored = true
-		segment.CanCollide = false
-		segment.Material = Enum.Material.Ground
-		segment.Color = pathColor
-		segment.Parent = pathsFolder
-	end
-
-	-- 1. Chemin principal : pont vers place centrale (avec point intermédiaire)
-	local bridgePos = MapConfig.BRIDGE_POSITION
-	local villageCenter = MapConfig.VILLAGE_CENTER
-	local intermediatePoint = Vector3.new(
-		(bridgePos.X + villageCenter.X) / 2 + 10,
-		0,
-		(bridgePos.Z + villageCenter.Z) / 2
-	)
-	
-	createPathSegment(bridgePos, intermediatePoint, 6, "MainPath_1")
-	createPathSegment(intermediatePoint, villageCenter, 6, "MainPath_2")
-
-	-- 2. Chemins vers chaque maison
-	for i, zone in ipairs(MapConfig.HOUSE_ZONES) do
-		createPathSegment(villageCenter, zone.Position, 3, "HousePath_" .. i)
-	end
-
-	-- 3. Chemin vers l'atelier
-	createPathSegment(villageCenter, MapConfig.WORKSHOP_ZONE.Position, 4, "WorkshopPath")
-
-	local totalPaths = 2 + #MapConfig.HOUSE_ZONES + 1
-	print("[WorldBuilder] " .. totalPaths .. " segments de chemins générés.")
-end
-
--- ============================================================================
--- ATELIER
--- ============================================================================
-
-local function generateWorkshop()
-	local workshopFolder = Instance.new("Folder")
-	workshopFolder.Name = "Workshop"
-	workshopFolder.Parent = workspace
-
-	local zone = MapConfig.WORKSHOP_ZONE
-	local workshop = Instance.new("Part")
-	workshop.Name = "WorkshopBuilding"
-	workshop.Size = zone.Size
-	workshop.Position = zone.Position
-	workshop.Orientation = Vector3.new(0, zone.Rotation or 0, 0)
-	workshop.Anchored = true
-	workshop.CanCollide = true
-	workshop.Material = Enum.Material.Wood
-	workshop.Color = Color3.fromRGB(100, 70, 40)
-	workshop.Parent = workshopFolder
-
-	print("[WorldBuilder] Atelier généré.")
-end
-
--- ============================================================================
--- CIMETIÈRE
--- ============================================================================
-
-local function generateCemetery()
-	local cemeteryFolder = Instance.new("Folder")
-	cemeteryFolder.Name = "Cemetery"
-	cemeteryFolder.Parent = workspace
-
-	local zone = MapConfig.CEMETERY_ZONE
-	local centerPos = zone.Position
-
-	-- Générer 8 stèles simples
-	for i = 1, 8 do
-		local angle = (i - 1) * (math.pi * 2 / 8)
-		local radius = 8
-		local x = centerPos.X + math.cos(angle) * radius
-		local z = centerPos.Z + math.sin(angle) * radius
-
-		local tombstone = Instance.new("Part")
-		tombstone.Name = "Tombstone_" .. i
-		tombstone.Size = Vector3.new(2, 3, 0.3)
-		tombstone.Position = Vector3.new(x, 1.5, z)
-		tombstone.Orientation = Vector3.new(0, math.deg(angle + math.pi/2), 0)
-		tombstone.Anchored = true
-		tombstone.CanCollide = true
-		tombstone.Material = Enum.Material.Slate
-		tombstone.Color = Color3.fromRGB(60, 60, 60)
-		tombstone.Parent = cemeteryFolder
-	end
-
-	print("[WorldBuilder] Cimetière généré avec 8 stèles.")
-end
-
--- ============================================================================
--- FORÊT MAUDITE
--- ============================================================================
-
 local function generateForest()
 	local forestFolder = Instance.new("Folder")
 	forestFolder.Name = "CursedForest"
@@ -384,118 +6,192 @@ local function generateForest()
 	local center = MapConfig.VILLAGE_CENTER
 	local innerRadius = MapConfig.FOREST_INNER_RADIUS
 	local outerRadius = MapConfig.FOREST_OUTER_RADIUS
-	local treeCount = 60
-	local minSpacing = 8
+	
+	-- Découpage en 3 bandes concentriques
+	local bandWidth = (outerRadius - innerRadius) / 3
+	local bands = {
+		{
+			name = "Edge",
+			innerR = innerRadius,
+			outerR = innerRadius + bandWidth,
+			treeCount = 20,
+			minSpacing = 14,
+			treeScale = 1.0,
+			trunkColor = Color3.fromRGB(70, 50, 30),
+			foliageColor = Color3.fromRGB(40, 60, 30),
+			addGrass = true,
+			grassCount = 15
+		},
+		{
+			name = "Middle",
+			innerR = innerRadius + bandWidth,
+			outerR = innerRadius + 2 * bandWidth,
+			treeCount = 30,
+			minSpacing = 8,
+			treeScale = 1.0,
+			trunkColor = Color3.fromRGB(65, 45, 25),
+			foliageColor = Color3.fromRGB(35, 55, 25),
+			addRocks = true,
+			rockCount = 12,
+			addBushes = true,
+			bushCount = 18
+		},
+		{
+			name = "Deep",
+			innerR = innerRadius + 2 * bandWidth,
+			outerR = outerRadius,
+			treeCount = 35,
+			minSpacing = 5,
+			treeScale = 1.3,
+			trunkColor = Color3.fromRGB(50, 35, 20),
+			foliageColor = Color3.fromRGB(30, 45, 20),
+			darkTrunks = true,
+			tiltTrunks = true
+		}
+	}
 
-	local treePositions = {}
-
-	for i = 1, treeCount do
-		local attempts = 0
-		local validPosition = false
-		local x, z
-
-		-- Trouver une position valide (pas trop proche des autres arbres)
-		while not validPosition and attempts < 20 do
-			attempts = attempts + 1
+	-- Fonction utilitaire pour trouver une position valide
+	local function findValidPosition(existingPositions, innerR, outerR, minSpacing, maxAttempts)
+		for attempt = 1, maxAttempts do
 			local angle = math.random() * math.pi * 2
-			local dist = innerRadius + math.random() * (outerRadius - innerRadius)
-			x = center.X + math.cos(angle) * dist
-			z = center.Z + math.sin(angle) * dist
+			local dist = innerR + math.random() * (outerR - innerR)
+			local x = center.X + math.cos(angle) * dist
+			local z = center.Z + math.sin(angle) * dist
+			local pos = Vector3.new(x, 0, z)
 
-			validPosition = true
-			for _, pos in ipairs(treePositions) do
-				if (Vector3.new(x, 0, z) - pos).Magnitude < minSpacing then
-					validPosition = false
+			local valid = true
+			for _, existingPos in ipairs(existingPositions) do
+				if (pos - existingPos).Magnitude < minSpacing then
+					valid = false
 					break
+				end
+			end
+
+			if valid then
+				return pos
+			end
+		end
+		return nil
+	end
+
+	local totalTreesGenerated = 0
+
+	-- Génération pour chaque bande
+	for _, band in ipairs(bands) do
+		local treePositions = {}
+
+		-- Générer les arbres de la bande
+		for i = 1, band.treeCount do
+			local pos = findValidPosition(treePositions, band.innerR, band.outerR, band.minSpacing, 20)
+			if pos then
+				table.insert(treePositions, pos)
+
+				local trunkHeight = 8 * band.treeScale
+				local trunkSize = 2 * band.treeScale
+				local foliageSize = 6 * band.treeScale
+
+				-- Tronc
+				local trunk = Instance.new("Part")
+				trunk.Name = "TreeTrunk_" .. band.name .. "_" .. i
+				trunk.Size = Vector3.new(trunkSize, trunkHeight, trunkSize)
+				trunk.Position = Vector3.new(pos.X, trunkHeight / 2, pos.Z)
+				trunk.Anchored = true
+				trunk.CanCollide = true
+				trunk.Material = Enum.Material.Wood
+				trunk.Color = band.trunkColor
+				trunk.Parent = forestFolder
+
+				-- Troncs sombres aléatoires (forêt profonde)
+				if band.darkTrunks and math.random() < 0.3 then
+					trunk.Material = math.random() > 0.5 and Enum.Material.Slate or Enum.Material.Basalt
+					trunk.Color = Color3.fromRGB(40, 30, 20)
+				end
+
+				-- Inclinaison aléatoire (forêt profonde)
+				if band.tiltTrunks and math.random() < 0.4 then
+					local tiltX = math.random(-10, 10)
+					local tiltZ = math.random(-10, 10)
+					trunk.Orientation = Vector3.new(tiltX, 0, tiltZ)
+				end
+
+				-- Feuillage
+				local foliage = Instance.new("Part")
+				foliage.Name = "TreeFoliage_" .. band.name .. "_" .. i
+				foliage.Shape = Enum.PartType.Ball
+				foliage.Size = Vector3.new(foliageSize, foliageSize, foliageSize)
+				foliage.Position = Vector3.new(pos.X, trunkHeight + foliageSize / 2 - 1, pos.Z)
+				foliage.Anchored = true
+				foliage.CanCollide = false
+				foliage.Material = Enum.Material.Grass
+				foliage.Color = band.foliageColor
+				foliage.Parent = forestFolder
+
+				totalTreesGenerated = totalTreesGenerated + 1
+			end
+		end
+
+		-- Touffes d'herbe (bande de bord)
+		if band.addGrass then
+			for i = 1, band.grassCount do
+				local pos = findValidPosition({}, band.innerR, band.outerR, 3, 10)
+				if pos then
+					local grass = Instance.new("Part")
+					grass.Name = "GrassTuft_" .. i
+					grass.Size = Vector3.new(2, 0.3, 2)
+					grass.Position = Vector3.new(pos.X, 0.15, pos.Z)
+					grass.Anchored = true
+					grass.CanCollide = false
+					grass.Material = Enum.Material.Grass
+					grass.Color = Color3.fromRGB(60, 100, 40)
+					grass.Parent = forestFolder
 				end
 			end
 		end
 
-		if not validPosition then
-			continue
+		-- Rochers (bande intermédiaire)
+		if band.addRocks then
+			for i = 1, band.rockCount do
+				local pos = findValidPosition(treePositions, band.innerR, band.outerR, 6, 15)
+				if pos then
+					local rockSize = Vector3.new(
+						math.random(2, 5),
+						math.random(1, 3),
+						math.random(2, 4)
+					)
+					local rock = Instance.new("Part")
+					rock.Name = "Rock_" .. i
+					rock.Size = rockSize
+					rock.Position = Vector3.new(pos.X, rockSize.Y / 2, pos.Z)
+					rock.Orientation = Vector3.new(0, math.random(0, 360), 0)
+					rock.Anchored = true
+					rock.CanCollide = true
+					rock.Material = math.random() > 0.5 and Enum.Material.Rock or Enum.Material.Slate
+					rock.Color = Color3.fromRGB(math.random(80, 120), math.random(80, 110), math.random(80, 110))
+					rock.Parent = forestFolder
+				end
+			end
 		end
 
-		table.insert(treePositions, Vector3.new(x, 0, z))
-
-		-- Tronc
-		local trunk = Instance.new("Part")
-		trunk.Name = "TreeTrunk_" .. i
-		trunk.Size = Vector3.new(2, 8, 2)
-		trunk.Position = Vector3.new(x, 4, z)
-		trunk.Anchored = true
-		trunk.CanCollide = true
-		trunk.Material = Enum.Material.Wood
-		trunk.Color = Color3.fromRGB(70, 50, 30)
-		trunk.Parent = forestFolder
-
-		-- Feuillage
-		local foliage = Instance.new("Part")
-		foliage.Name = "TreeFoliage_" .. i
-		foliage.Shape = Enum.PartType.Ball
-		foliage.Size = Vector3.new(6, 6, 6)
-		foliage.Position = Vector3.new(x, 9, z)
-		foliage.Anchored = true
-		foliage.CanCollide = false
-		foliage.Material = Enum.Material.Grass
-		foliage.Color = Color3.fromRGB(40, 60, 30)
-		foliage.Parent = forestFolder
+		-- Buissons (bande intermédiaire)
+		if band.addBushes then
+			for i = 1, band.bushCount do
+				local pos = findValidPosition({}, band.innerR, band.outerR, 4, 10)
+				if pos then
+					local bushSize = math.random(15, 30) / 10
+					local bush = Instance.new("Part")
+					bush.Name = "Bush_" .. i
+					bush.Shape = Enum.PartType.Ball
+					bush.Size = Vector3.new(bushSize, bushSize * 0.8, bushSize)
+					bush.Position = Vector3.new(pos.X, bushSize * 0.4, pos.Z)
+					bush.Anchored = true
+					bush.CanCollide = false
+					bush.Material = Enum.Material.Grass
+					bush.Color = Color3.fromRGB(25, 45, 20)
+					bush.Parent = forestFolder
+				end
+			end
+		end
 	end
 
-	print("[WorldBuilder] Forêt maudite générée avec " .. #treePositions .. " arbres.")
+	print("[WorldBuilder] Forêt maudite générée avec " .. totalTreesGenerated .. " arbres en 3 bandes concentriques (bord/intermédiaire/profonde).")
 end
-
--- ============================================================================
--- POINTS DE SPAWN DES MONSTRES
--- ============================================================================
-
-local function generateMonsterSpawns()
-	local spawnsFolder = Instance.new("Folder")
-	spawnsFolder.Name = "MonsterSpawns"
-	spawnsFolder.Parent = workspace
-
-	local center = MapConfig.VILLAGE_CENTER
-	local spawnRadius = MapConfig.FOREST_INNER_RADIUS + 15
-
-	for i = 1, 6 do
-		local angle = (i - 1) * (math.pi * 2 / 6)
-		local x = center.X + math.cos(angle) * spawnRadius
-		local z = center.Z + math.sin(angle) * spawnRadius
-
-		local spawn = Instance.new("Part")
-		spawn.Name = "MonsterSpawn_" .. i
-		spawn.Size = Vector3.new(4, 1, 4)
-		spawn.Position = Vector3.new(x, 0.5, z)
-		spawn.Anchored = true
-		spawn.Transparency = 1
-		spawn.CanCollide = false
-		spawn.Parent = spawnsFolder
-
-		CollectionService:AddTag(spawn, "MonsterSpawnPoint")
-	end
-
-	print("[WorldBuilder] 6 points de spawn de monstres générés dans la forêt.")
-end
-
--- ============================================================================
--- SÉQUENCE DE GÉNÉRATION PRINCIPALE
--- ============================================================================
-
-print("[WorldBuilder] Début de la génération de la map...")
-
-clearExistingWorld()
-ensureBaseplate()
-generateRiver()
-generateBridge()
-generateCentralSquare()
-generateSacredFire()
-generateHouses()
-generatePaths()
-generateWorkshop()
-generateCemetery()
-generateForest()
-generateMonsterSpawns()
-
--- Signal de fin pour MonsterSpawner et VotingSystem
-workspace:SetAttribute("WorldReady", true)
-
-print("[WorldBuilder] Génération GRAYBOX terminée. Map prête. WorldReady = true.")
