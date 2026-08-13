@@ -17,11 +17,11 @@ local CraftItemEvent = RemoteEventsFolder:WaitForChild("CraftItemEvent")
 local CraftSuccessEvent = RemoteEventsFolder:WaitForChild("CraftSuccessEvent")
 
 local CRAFT_RECIPES = {
-    {Name = "Barricade", Wood = 5, Stone = 0, Description = "Barricade temporaire (60s)"},
-    {Name = "Fortification", Wood = 3, Stone = 2, Description = "Répare une porte (+100 HP)"},
-    {Name = "Lance", Wood = 4, Stone = 1, Description = "Arme de mêlée (25 dégâts)"},
+    {Name = "Barricade", Wood = 5, Stone = 2, Description = "Barricade temporaire (60s)"},
+    {Name = "Fortification", Wood = 10, Stone = 5, Description = "Répare une porte (+100 HP)"},
+    {Name = "Lance", Wood = 3, Stone = 1, Description = "Arme de mêlée (25 dégâts)"},
     {Name = "Torche", Wood = 2, Stone = 1, Description = "Éclairage et vitesse +"},
-    {Name = "Piege", Wood = 2, Stone = 3, Description = "Piège au sol ralentissant les ennemis"}
+    {Name = "Piege", Wood = 4, Stone = 2, Description = "Piège au sol ralentissant les ennemis"}
 }
 
 local screenGui = Instance.new("ScreenGui")

@@ -12,6 +12,9 @@ GameConfig.NIGHT_DURATION = 45
 -- Joueurs
 GameConfig.MIN_PLAYERS = 1
 
+-- Rôles
+GameConfig.TRAITOR_RATIO = 0.25
+
 -- Monstres
 GameConfig.BASE_MONSTER_COUNT = 2
 GameConfig.MONSTER_COUNT_INCREASE_PER_NIGHT = 1
