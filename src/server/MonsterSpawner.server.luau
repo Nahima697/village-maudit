@@ -1,3 +1,4 @@
+<final_code>
 --[[
 	MonsterSpawner.server.luau
 	Gère l'apparition et le comportement des monstres durant la phase de nuit.
@@ -166,6 +167,17 @@ local function createMonster()
 	weldTo(rightArm, CFrame.new(1.5, 0, 0))
 	weldTo(leftLeg, CFrame.new(-0.5, -2, 0))
 	weldTo(rightLeg, CFrame.new(0.5, -2, 0))
+	
+	-- Son de grognement 3D positionnel
+	local growlSound = Instance.new("Sound")
+	growlSound.Name = "MonsterGrowl"
+	growlSound.SoundId = GameConfig.SOUNDS.MonsterGrowl
+	growlSound.Looped = true
+	growlSound.Volume = 0.4
+	growlSound.RollOffMode = Enum.RollOffMode.InverseTapered
+	growlSound.RollOffMaxDistance = 80
+	growlSound.Parent = torso
+	growlSound:Play()
 	
 	return monster
 end
@@ -737,3 +749,4 @@ end
 
 -- Démarrage
 initialize()
+</final_code>
