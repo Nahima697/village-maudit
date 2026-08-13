@@ -19,7 +19,7 @@ local HouseGenerator = require(script.Parent.WorldGen.HouseGenerator)
 local function clearExistingWorld()
 	local foldersToClean = {
 		"River", "OldBridge", "CentralSquare", "SacredFire", 
-		"Houses", "Workshop", "Cemetery", "CursedForest", "MonsterSpawns"
+		"Houses", "Workshop", "Cemetery", "CursedForest", "MonsterSpawns", "Paths"
 	}
 	for _, folderName in ipairs(foldersToClean) do
 		local existing = workspace:FindFirstChild(folderName)
@@ -261,6 +261,60 @@ local function generateHouses()
 end
 
 -- ============================================================================
+-- CHEMINS
+-- ============================================================================
+
+local function generatePaths()
+	local pathsFolder = Instance.new("Folder")
+	pathsFolder.Name = "Paths"
+	pathsFolder.Parent = workspace
+
+	local pathColor = Color3.fromRGB(90, 65, 45)
+	local pathHeight = 0.3
+	local pathYOffset = 0.2
+
+	-- Fonction utilitaire pour créer un segment de chemin
+	local function createPathSegment(p1, p2, width, name)
+		local midpoint = (p1 + p2) / 2 + Vector3.new(0, pathYOffset, 0)
+		local distance = (p2 - p1).Magnitude
+
+		local segment = Instance.new("Part")
+		segment.Name = name
+		segment.Size = Vector3.new(width, pathHeight, distance)
+		segment.Position = midpoint
+		segment.CFrame = CFrame.lookAt(midpoint, p2 + Vector3.new(0, pathYOffset, 0)) * CFrame.Angles(math.rad(90), 0, 0)
+		segment.Anchored = true
+		segment.CanCollide = false
+		segment.Material = Enum.Material.Ground
+		segment.Color = pathColor
+		segment.Parent = pathsFolder
+	end
+
+	-- 1. Chemin principal : pont vers place centrale (avec point intermédiaire)
+	local bridgePos = MapConfig.BRIDGE_POSITION
+	local villageCenter = MapConfig.VILLAGE_CENTER
+	local intermediatePoint = Vector3.new(
+		(bridgePos.X + villageCenter.X) / 2 + 10,
+		0,
+		(bridgePos.Z + villageCenter.Z) / 2
+	)
+	
+	createPathSegment(bridgePos, intermediatePoint, 6, "MainPath_1")
+	createPathSegment(intermediatePoint, villageCenter, 6, "MainPath_2")
+
+	-- 2. Chemins vers chaque maison
+	for i, zone in ipairs(MapConfig.HOUSE_ZONES) do
+		createPathSegment(villageCenter, zone.Position, 3, "HousePath_" .. i)
+	end
+
+	-- 3. Chemin vers l'atelier
+	createPathSegment(villageCenter, MapConfig.WORKSHOP_ZONE.Position, 4, "WorkshopPath")
+
+	local totalPaths = 2 + #MapConfig.HOUSE_ZONES + 1
+	print("[WorldBuilder] " .. totalPaths .. " segments de chemins générés.")
+end
+
+-- ============================================================================
 -- ATELIER
 -- ============================================================================
 
@@ -435,6 +489,7 @@ generateBridge()
 generateCentralSquare()
 generateSacredFire()
 generateHouses()
+generatePaths()
 generateWorkshop()
 generateCemetery()
 generateForest()
