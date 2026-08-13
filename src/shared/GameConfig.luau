@@ -30,8 +30,9 @@ GameConfig.SOUNDS = {
 	NightAmbient = "rbxassetid://140226003563104",  -- Scary Spooky Dark Horror Thriller
 	MonsterGrowl = "rbxassetid://71374905925238",   -- The Chase Protocol
 	VoteStart = "rbxassetid://140115427069802",     -- Tension
-	CraftSuccess = "rbxassetid://0",                -- TODO : pas encore de son de ding court
-	TraitorWhisper = "rbxassetid://140440238391729", -- Horror Sound Effect - Voices (Whispers), pas encore cablé
+	CraftSuccess = "rbxassetid://101967493171799",  -- Minecraft-style crafting sound
+	TraitorWhisper = "rbxassetid://140440238391729", -- Horror Sound Effect - Voices (Whispers), pas encore cable
+	VoteCast = "rbxassetid://18908611063",          -- Confirmation sonore au moment de voter
 }
 
 return GameConfig

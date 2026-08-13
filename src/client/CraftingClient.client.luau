@@ -6,6 +6,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -16,6 +17,8 @@ local CollectResourceEvent = RemoteEventsFolder:WaitForChild("CollectResourceEve
 local CraftItemEvent = RemoteEventsFolder:WaitForChild("CraftItemEvent")
 local CraftSuccessEvent = RemoteEventsFolder:WaitForChild("CraftSuccessEvent")
 
+local GameConfig = require(ReplicatedStorage.Modules.GameConfig)
+
 local CRAFT_RECIPES = {
     {Name = "Barricade", Wood = 5, Stone = 2, Description = "Barricade temporaire (60s)"},
     {Name = "Fortification", Wood = 10, Stone = 5, Description = "Répare une porte (+100 HP)"},
@@ -23,6 +26,13 @@ local CRAFT_RECIPES = {
     {Name = "Torche", Wood = 2, Stone = 1, Description = "Éclairage et vitesse +"},
     {Name = "Piege", Wood = 4, Stone = 2, Description = "Piège au sol ralentissant les ennemis"}
 }
+
+-- Création du son de succès de craft (une seule fois au démarrage)
+local craftSuccessSound = Instance.new("Sound")
+craftSuccessSound.Name = "CraftSuccessSound"
+craftSuccessSound.SoundId = GameConfig.SOUNDS.CraftSuccess
+craftSuccessSound.Volume = 0.6
+craftSuccessSound.Parent = SoundService
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "CraftingUI"
@@ -219,6 +229,10 @@ end)
 
 CraftSuccessEvent.OnClientEvent:Connect(function(success, message)
     if success then
+        -- Jouer le son de succès
+        craftSuccessSound:Play()
+        
+        -- Fermer le menu de craft après un court délai
         task.wait(0.5)
         craftFrame.Visible = false
     end
