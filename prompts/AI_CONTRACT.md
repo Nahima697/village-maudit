@@ -9,6 +9,7 @@ Le projet utilise plusieurs scripts autonomes (`.server.luau`) qui démarrent en
 
 ## 2. Architecture des fichiers
 * Les systèmes indépendants (`WorldBuilder`, `MonsterSpawner`, `RoleManager`, `VotingSystem`, `PlayerManager`) ont l'extension `.server.luau` pour s'exécuter de façon autonome au démarrage. Ne les transforme PAS en `ModuleScript` (pas de `.luau` simple pour eux).
+* EXCEPTION WorldBuilder (V2, depuis la régénération procédurale) : WorldBuilder.server.luau reste le point d'entrée .server.luau, mais peut require() des ModuleScripts de génération (src/server/WorldGen/*.luau) pour rester modulaire. Ces modules ne sont PAS autonomes, ils exportent des fonctions appelées par WorldBuilder.server.luau.
 * Les configurations partagées (comme `GameConfig.luau`) vont dans `ReplicatedStorage/Modules`.
 
 ## 3. Unicité des instructions
