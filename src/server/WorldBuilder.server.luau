@@ -41,7 +41,7 @@ local function ensureBaseplate()
 	bp.Size = Vector3.new(400, 1, 400)
 	bp.Position = Vector3.new(0, -0.5, 0)
 	bp.Anchored = true
-	bp.Color = Color3.fromRGB(95, 115, 55)
+	bp.Color = Color3.fromRGB(70, 85, 50)
 	bp.Material = Enum.Material.Grass
 	bp.Parent = workspace
 	print("[WorldBuilder] BasePlate créé.")
@@ -148,27 +148,97 @@ local function generateSacredFire()
 	fireFolder.Name = "SacredFire"
 	fireFolder.Parent = workspace
 
-	-- Brasier (cylindre)
-	local fire = Instance.new("Part")
-	fire.Name = "FirePit"
-	fire.Shape = Enum.PartType.Cylinder
-	fire.Size = Vector3.new(2, 3, 3)
-	fire.Position = MapConfig.VILLAGE_CENTER + Vector3.new(0, 1, 0)
-	fire.Orientation = Vector3.new(0, 0, 90)
-	fire.Anchored = true
-	fire.CanCollide = false
-	fire.Material = Enum.Material.Neon
-	fire.Color = Color3.fromRGB(255, 100, 0)
-	fire.Parent = fireFolder
+	local center = MapConfig.VILLAGE_CENTER
+	local stoneRingRadius = 3
+	local stoneCount = 8
 
-	-- Lumière
+	-- Anneau de pierres (foyer)
+	for i = 1, stoneCount do
+		local angle = (i - 1) * (math.pi * 2 / stoneCount)
+		local x = center.X + math.cos(angle) * stoneRingRadius
+		local z = center.Z + math.sin(angle) * stoneRingRadius
+
+		local stone = Instance.new("Part")
+		stone.Name = "FireStone_" .. i
+		stone.Shape = Enum.PartType.Cylinder
+		stone.Size = Vector3.new(1.5, 2, 2)
+		stone.Position = Vector3.new(x, 0.75, z)
+		stone.Orientation = Vector3.new(0, 0, 90)
+		stone.Anchored = true
+		stone.CanCollide = true
+		stone.Material = Enum.Material.Slate
+		stone.Color = Color3.fromRGB(80, 80, 80)
+		stone.Parent = fireFolder
+	end
+
+	-- Bois qui brûle (tas de bûches au centre)
+	local logPositions = {
+		{offset = Vector3.new(0, 0.3, 0), rotation = Vector3.new(0, 0, 0)},
+		{offset = Vector3.new(0.5, 0.3, 0.3), rotation = Vector3.new(0, 45, 0)},
+		{offset = Vector3.new(-0.4, 0.3, -0.3), rotation = Vector3.new(0, -30, 0)},
+		{offset = Vector3.new(0.2, 0.8, 0.1), rotation = Vector3.new(0, 60, 10)},
+	}
+
+	for i, logData in ipairs(logPositions) do
+		local log = Instance.new("Part")
+		log.Name = "FireLog_" .. i
+		log.Shape = Enum.PartType.Cylinder
+		log.Size = Vector3.new(0.4, 2, 0.4)
+		log.Position = center + logData.offset
+		log.Orientation = logData.rotation
+		log.Anchored = true
+		log.CanCollide = false
+		log.Material = Enum.Material.Wood
+		log.Color = Color3.fromRGB(60, 40, 20)
+		log.Parent = fireFolder
+	end
+
+	-- Flammes (Neon orange)
+	local flames = Instance.new("Part")
+	flames.Name = "FireFlames"
+	flames.Shape = Enum.PartType.Ball
+	flames.Size = Vector3.new(2, 2.5, 2)
+	flames.Position = center + Vector3.new(0, 1.5, 0)
+	flames.Anchored = true
+	flames.CanCollide = false
+	flames.Material = Enum.Material.Neon
+	flames.Color = Color3.fromRGB(255, 100, 0)
+	flames.Transparency = 0.2
+	flames.Parent = fireFolder
+
+	-- Particules de braises
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 150, 50)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 80, 0)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 30, 0))
+	})
+	emitter.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.3),
+		NumberSequenceKeypoint.new(1, 0.1)
+	})
+	emitter.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.3),
+		NumberSequenceKeypoint.new(1, 1)
+	})
+	emitter.Lifetime = NumberRange.new(1, 2)
+	emitter.Rate = 40
+	emitter.Speed = NumberRange.new(2, 4)
+	emitter.SpreadAngle = Vector2.new(30, 30)
+	emitter.VelocityInheritance = 0
+	emitter.Acceleration = Vector3.new(0, 3, 0)
+	emitter.LightEmission = 1
+	emitter.Parent = flames
+
+	-- Lumière améliorée
 	local light = Instance.new("PointLight")
 	light.Color = Color3.fromRGB(255, 120, 50)
-	light.Brightness = 2
-	light.Range = 30
-	light.Parent = fire
+	light.Brightness = 3
+	light.Range = 45
+	light.Shadows = true
+	light.Parent = flames
 
-	print("[WorldBuilder] Brasier sacré généré.")
+	print("[WorldBuilder] Brasier sacré généré avec anneau de pierre, bûches, flammes et particules.")
 end
 
 -- ============================================================================
