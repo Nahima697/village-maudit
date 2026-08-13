@@ -138,7 +138,7 @@ local function createMonster()
 	humanoid.MaxHealth = MONSTER_HEALTH
 	humanoid.Health = MONSTER_HEALTH
 	humanoid.WalkSpeed = MONSTER_WALK_SPEED
-	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Subject
 	humanoid.Parent = monster
 	
 	-- HumanoidRootPart
