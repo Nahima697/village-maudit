@@ -23,4 +23,14 @@ GameConfig.MONSTER_MAX_COUNT = 8
 -- Victoire
 GameConfig.NIGHTS_TO_SURVIVE = 5
 
+
+-- Audio (remplace ces IDs par de vrais sons choisis dans Studio > Toolbox > Audio)
+GameConfig.SOUNDS = {
+	DayAmbient = "rbxassetid://0",
+	NightAmbient = "rbxassetid://0",
+	MonsterGrowl = "rbxassetid://0",
+	VoteStart = "rbxassetid://0",
+	CraftSuccess = "rbxassetid://0",
+}
+
 return GameConfig
