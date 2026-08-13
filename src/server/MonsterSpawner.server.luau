@@ -1,4 +1,3 @@
-<final_code>
 --[[
 	MonsterSpawner.server.luau
 	Gère l'apparition et le comportement des monstres durant la phase de nuit.
@@ -749,4 +748,3 @@ end
 
 -- Démarrage
 initialize()
-</final_code>
