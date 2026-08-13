@@ -3,6 +3,7 @@
     Interface client moderne, propre et compatible avec l'API Roblox.
 ]]
 
+print("[CraftingClient] 1. Script demarre")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
@@ -12,12 +13,16 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local mouse = player:GetMouse()
 
+print("[CraftingClient] 2. Avant WaitForChild RemoteEvents")
 local RemoteEventsFolder = ReplicatedStorage:WaitForChild("RemoteEvents")
+print("[CraftingClient] 3. RemoteEvents trouve")
 local CollectResourceEvent = RemoteEventsFolder:WaitForChild("CollectResourceEvent")
 local CraftItemEvent = RemoteEventsFolder:WaitForChild("CraftItemEvent")
 local CraftSuccessEvent = RemoteEventsFolder:WaitForChild("CraftSuccessEvent")
+print("[CraftingClient] 4. Tous les RemoteEvents trouves")
 
 local GameConfig = require(ReplicatedStorage.Modules.GameConfig)
+print("[CraftingClient] 5. GameConfig charge")
 
 local CRAFT_RECIPES = {
     {Name = "Barricade", Wood = 5, Stone = 2, Description = "Barricade temporaire (60s)"},
@@ -38,6 +43,7 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "CraftingUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
+print("[CraftingClient] 6. UI creee")
 
 local resourceFrame = Instance.new("Frame")
 resourceFrame.Name = "ResourceFrame"
