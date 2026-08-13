@@ -44,6 +44,12 @@ screenGui.Name = "CraftingUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 print("[CraftingClient] 6. UI creee")
+task.wait(1)
+print("[CraftingClient] 7. Verif existe dans PlayerGui:", playerGui:FindFirstChild("CraftingUI") ~= nil)
+print("[CraftingClient] 8. FullName:", screenGui:GetFullName())
+print("[CraftingClient] 9. Parent actuel:", tostring(screenGui.Parent))
+print("[CraftingClient] 10. screenGui.Enabled:", screenGui.Enabled)
+print("[CraftingClient] 11. resourceFrame.Visible:", resourceFrame.Visible)
 
 local resourceFrame = Instance.new("Frame")
 resourceFrame.Name = "ResourceFrame"
