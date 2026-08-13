@@ -185,7 +185,7 @@ local function generateHouses()
 		house.Name = "House_" .. i
 		house.Size = zone.Size
 		house.Position = zone.Position
-		house.Orientation = zone.Rotation
+		house.Orientation = Vector3.new(0, zone.Rotation or 0, 0)
 		house.Anchored = true
 		house.CanCollide = true
 		house.Material = Enum.Material.Brick
@@ -210,7 +210,7 @@ local function generateWorkshop()
 	workshop.Name = "WorkshopBuilding"
 	workshop.Size = zone.Size
 	workshop.Position = zone.Position
-	workshop.Orientation = zone.Rotation
+	workshop.Orientation = Vector3.new(0, zone.Rotation or 0, 0)
 	workshop.Anchored = true
 	workshop.CanCollide = true
 	workshop.Material = Enum.Material.Wood
