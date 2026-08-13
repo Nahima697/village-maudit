@@ -6,6 +6,9 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+
+local GameConfig = require(ReplicatedStorage.Modules.GameConfig)
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -21,6 +24,13 @@ local votingGui: ScreenGui = nil
 local votingFrame: Frame = nil
 local resultLabel: TextLabel = nil
 local hasVoted = false
+
+-- Son de vote
+local voteCastSound = Instance.new("Sound")
+voteCastSound.Name = "VoteCastSound"
+voteCastSound.SoundId = GameConfig.SOUNDS.VoteCast
+voteCastSound.Volume = 0.6
+voteCastSound.Parent = SoundService
 
 --[[
 	Crée l'interface de vote
@@ -133,6 +143,9 @@ local function populatePlayerList(scrollFrame: ScrollingFrame)
 			if hasVoted then
 				return
 			end
+
+			-- Joue le son de vote
+			voteCastSound:Play()
 
 			-- Envoie le vote au serveur (instance Player, pas UserId)
 			voteEvent:FireServer(player)
