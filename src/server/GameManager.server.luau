@@ -10,65 +10,67 @@ local Lighting = game:GetService("Lighting")
 local function setDayLighting()
 	Lighting.ClockTime = 12
 	Lighting.Brightness = 2
-	Lighting.Ambient = Color3.fromRGB(150, 150, 150)
-	Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 150)
+	-- Tons naturels désaturés : beige/brun clair pour simuler lumière naturelle du jour
+	Lighting.Ambient = Color3.fromRGB(140, 130, 115)
+	Lighting.OutdoorAmbient = Color3.fromRGB(160, 150, 130)
 	Lighting.FogEnd = 100000
 	
-	-- Gestion de l'Atmosphere
+	-- Gestion de l'Atmosphere : jour clair et dégagé
 	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
 	if not atmosphere then
 		atmosphere = Instance.new("Atmosphere")
 		atmosphere.Parent = Lighting
 	end
-	atmosphere.Density = 0.3
+	atmosphere.Density = 0.2
 	atmosphere.Offset = 0
-	atmosphere.Color = Color3.fromRGB(255, 255, 255)
-	atmosphere.Decay = Color3.fromRGB(200, 220, 255)
+	atmosphere.Color = Color3.fromRGB(240, 235, 220)
+	atmosphere.Decay = Color3.fromRGB(210, 200, 180)
 	atmosphere.Glare = 0
-	atmosphere.Haze = 1
+	atmosphere.Haze = 0.5
 	
-	-- Gestion du ColorCorrection
+	-- Gestion du ColorCorrection : désaturation légère, chaleur neutre
 	local colorCorrection = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
 	if not colorCorrection then
 		colorCorrection = Instance.new("ColorCorrectionEffect")
 		colorCorrection.Parent = Lighting
 	end
-	colorCorrection.Saturation = 0
-	colorCorrection.Contrast = 0
-	colorCorrection.TintColor = Color3.fromRGB(255, 255, 255)
+	colorCorrection.Saturation = -0.1
+	colorCorrection.Contrast = 0.05
+	colorCorrection.TintColor = Color3.fromRGB(255, 250, 240)
 	colorCorrection.Brightness = 0
 end
 
 local function setNightLighting()
 	Lighting.ClockTime = 21
 	Lighting.Brightness = 3
-	Lighting.Ambient = Color3.fromRGB(110, 110, 150)
-	Lighting.OutdoorAmbient = Color3.fromRGB(110, 110, 150)
+	-- Tons naturels désaturés : bleu-gris sombre pour une nuit réaliste et oppressante
+	Lighting.Ambient = Color3.fromRGB(70, 75, 85)
+	Lighting.OutdoorAmbient = Color3.fromRGB(85, 90, 105)
 	Lighting.FogEnd = 2000
-	Lighting.FogColor = Color3.fromRGB(60, 60, 90)
+	Lighting.FogColor = Color3.fromRGB(50, 55, 70)
 	
-	-- Gestion de l'Atmosphere
+	-- Gestion de l'Atmosphere : nuit dense et sombre
 	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
 	if not atmosphere then
 		atmosphere = Instance.new("Atmosphere")
 		atmosphere.Parent = Lighting
 	end
-	atmosphere.Density = 0.5
+	atmosphere.Density = 0.6
 	atmosphere.Offset = 0
-	atmosphere.Color = Color3.fromRGB(100, 110, 130)
-	atmosphere.Decay = Color3.fromRGB(80, 90, 110)
-	atmosphere.Glare = 0.2
-	atmosphere.Haze = 3
+	atmosphere.Color = Color3.fromRGB(80, 85, 100)
+	atmosphere.Decay = Color3.fromRGB(60, 65, 80)
+	atmosphere.Glare = 0.3
+	atmosphere.Haze = 4
 	
-	-- Gestion du ColorCorrection
+	-- Gestion du ColorCorrection : forte désaturation, contraste élevé, teinte froide
 	local colorCorrection = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
 	if not colorCorrection then
 		colorCorrection = Instance.new("ColorCorrectionEffect")
 		colorCorrection.Parent = Lighting
 	end
-	colorCorrection.Saturation = -0.2
+	colorCorrection.Saturation = -0.3
 	colorCorrection.Contrast = 0.1
-	colorCorrection.TintColor = Color3.fromRGB(200, 210, 255)
+	colorCorrection.TintColor = Color3.fromRGB(180, 190, 210)
 	colorCorrection.Brightness = 0
 end
 
