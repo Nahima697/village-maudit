@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Charger la configuration de la map
 local MapConfig = require(script.Parent.WorldGen.MapConfig)
+local HouseGenerator = require(script.Parent.WorldGen.HouseGenerator)
 
 -- ============================================================================
 -- UTILITAIRES
@@ -251,19 +252,12 @@ local function generateHouses()
 	housesFolder.Parent = workspace
 
 	for i, zone in ipairs(MapConfig.HOUSE_ZONES) do
-		local house = Instance.new("Part")
-		house.Name = "House_" .. i
-		house.Size = zone.Size
-		house.Position = zone.Position
-		house.Orientation = Vector3.new(0, zone.Rotation or 0, 0)
-		house.Anchored = true
-		house.CanCollide = true
-		house.Material = Enum.Material.Brick
-		house.Color = Color3.fromRGB(120, 100, 80)
-		house.Parent = housesFolder
+		local modelType = ((i - 1) % 5) + 1
+		local houseModel = HouseGenerator.Create(modelType, zone.Position, zone.Size, zone.Rotation)
+		houseModel.Parent = housesFolder
 	end
 
-	print("[WorldBuilder] " .. #MapConfig.HOUSE_ZONES .. " maisons générées.")
+	print("[WorldBuilder] " .. #MapConfig.HOUSE_ZONES .. " maisons générées avec HouseGenerator.")
 end
 
 -- ============================================================================
