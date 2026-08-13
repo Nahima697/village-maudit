@@ -13,6 +13,30 @@ local function setDayLighting()
 	Lighting.Ambient = Color3.fromRGB(150, 150, 150)
 	Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 150)
 	Lighting.FogEnd = 100000
+	
+	-- Gestion de l'Atmosphere
+	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+	if not atmosphere then
+		atmosphere = Instance.new("Atmosphere")
+		atmosphere.Parent = Lighting
+	end
+	atmosphere.Density = 0.3
+	atmosphere.Offset = 0
+	atmosphere.Color = Color3.fromRGB(255, 255, 255)
+	atmosphere.Decay = Color3.fromRGB(200, 220, 255)
+	atmosphere.Glare = 0
+	atmosphere.Haze = 1
+	
+	-- Gestion du ColorCorrection
+	local colorCorrection = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+	if not colorCorrection then
+		colorCorrection = Instance.new("ColorCorrectionEffect")
+		colorCorrection.Parent = Lighting
+	end
+	colorCorrection.Saturation = 0
+	colorCorrection.Contrast = 0
+	colorCorrection.TintColor = Color3.fromRGB(255, 255, 255)
+	colorCorrection.Brightness = 0
 end
 
 local function setNightLighting()
@@ -22,6 +46,30 @@ local function setNightLighting()
 	Lighting.OutdoorAmbient = Color3.fromRGB(110, 110, 150)
 	Lighting.FogEnd = 2000
 	Lighting.FogColor = Color3.fromRGB(60, 60, 90)
+	
+	-- Gestion de l'Atmosphere
+	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+	if not atmosphere then
+		atmosphere = Instance.new("Atmosphere")
+		atmosphere.Parent = Lighting
+	end
+	atmosphere.Density = 0.5
+	atmosphere.Offset = 0
+	atmosphere.Color = Color3.fromRGB(100, 110, 130)
+	atmosphere.Decay = Color3.fromRGB(80, 90, 110)
+	atmosphere.Glare = 0.2
+	atmosphere.Haze = 3
+	
+	-- Gestion du ColorCorrection
+	local colorCorrection = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+	if not colorCorrection then
+		colorCorrection = Instance.new("ColorCorrectionEffect")
+		colorCorrection.Parent = Lighting
+	end
+	colorCorrection.Saturation = -0.2
+	colorCorrection.Contrast = 0.1
+	colorCorrection.TintColor = Color3.fromRGB(200, 210, 255)
+	colorCorrection.Brightness = 0
 end
 
 -- ============================================================
