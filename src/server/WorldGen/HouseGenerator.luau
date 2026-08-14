@@ -91,17 +91,28 @@ local function createVariant1House(model, size, baseCFrame)
 	-- Toit à deux pentes (ardoise sombre)
 	local roofColor = Color3.fromRGB(50, 50, 55)
 	local roofHeight = wallHeight + 2
-	local roofSlope = 1.5
 	
 	-- Pente gauche
-	createWedge(model, Vector3.new(0.5, roofSlope, width/2 + 0.5), 
-		baseCFrame * CFrame.new(-width/4, roofHeight, 0) * CFrame.Angles(0, -math.pi/2, math.pi/2), 
-		roofColor, Enum.Material.Slate)
+	local leftRoof = Instance.new("Part")
+	leftRoof.Size = Vector3.new(depth + 1, 0.4, width/2 + 1)
+	leftRoof.CFrame = baseCFrame * CFrame.new(-width/4, roofHeight, 0) * CFrame.Angles(0, 0, math.rad(30))
+	leftRoof.Color = roofColor
+	leftRoof.Material = Enum.Material.Slate
+	leftRoof.Anchored = true
+	leftRoof.TopSurface = Enum.SurfaceType.Smooth
+	leftRoof.BottomSurface = Enum.SurfaceType.Smooth
+	leftRoof.Parent = model
 	
 	-- Pente droite
-	createWedge(model, Vector3.new(0.5, roofSlope, width/2 + 0.5), 
-		baseCFrame * CFrame.new(width/4, roofHeight, 0) * CFrame.Angles(0, math.pi/2, -math.pi/2), 
-		roofColor, Enum.Material.Slate)
+	local rightRoof = Instance.new("Part")
+	rightRoof.Size = Vector3.new(depth + 1, 0.4, width/2 + 1)
+	rightRoof.CFrame = baseCFrame * CFrame.new(width/4, roofHeight, 0) * CFrame.Angles(0, 0, -math.rad(30))
+	rightRoof.Color = roofColor
+	rightRoof.Material = Enum.Material.Slate
+	rightRoof.Anchored = true
+	rightRoof.TopSurface = Enum.SurfaceType.Smooth
+	rightRoof.BottomSurface = Enum.SurfaceType.Smooth
+	rightRoof.Parent = model
 	
 	-- Cheminée (petit cylindre sur le toit)
 	local chimney = Instance.new("Part")
@@ -172,15 +183,28 @@ local function createVariant2House(model, size, baseCFrame)
 	-- Toit à deux pentes
 	local roofColor = Color3.fromRGB(45, 40, 40)
 	local roofHeight = wallHeight + 1.8
-	local roofSlope = 1.4
 	
-	createWedge(model, Vector3.new(0.5, roofSlope, width/2 + 0.6), 
-		baseCFrame * CFrame.new(-width/4, roofHeight, 0) * CFrame.Angles(0, -math.pi/2, math.pi/2), 
-		roofColor, Enum.Material.Slate)
+	-- Pente gauche
+	local leftRoof = Instance.new("Part")
+	leftRoof.Size = Vector3.new(depth + 1, 0.4, width/2 + 1)
+	leftRoof.CFrame = baseCFrame * CFrame.new(-width/4, roofHeight, 0) * CFrame.Angles(0, 0, math.rad(30))
+	leftRoof.Color = roofColor
+	leftRoof.Material = Enum.Material.Slate
+	leftRoof.Anchored = true
+	leftRoof.TopSurface = Enum.SurfaceType.Smooth
+	leftRoof.BottomSurface = Enum.SurfaceType.Smooth
+	leftRoof.Parent = model
 	
-	createWedge(model, Vector3.new(0.5, roofSlope, width/2 + 0.6), 
-		baseCFrame * CFrame.new(width/4, roofHeight, 0) * CFrame.Angles(0, math.pi/2, -math.pi/2), 
-		roofColor, Enum.Material.Slate)
+	-- Pente droite
+	local rightRoof = Instance.new("Part")
+	rightRoof.Size = Vector3.new(depth + 1, 0.4, width/2 + 1)
+	rightRoof.CFrame = baseCFrame * CFrame.new(width/4, roofHeight, 0) * CFrame.Angles(0, 0, -math.rad(30))
+	rightRoof.Color = roofColor
+	rightRoof.Material = Enum.Material.Slate
+	rightRoof.Anchored = true
+	rightRoof.TopSurface = Enum.SurfaceType.Smooth
+	rightRoof.BottomSurface = Enum.SurfaceType.Smooth
+	rightRoof.Parent = model
 	
 	return frontWall
 end
@@ -295,15 +319,28 @@ local function createVariant4House(model, size, baseCFrame)
 	-- Toit à deux pentes
 	local roofColor = Color3.fromRGB(48, 45, 45)
 	local roofHeight = wallHeight + 2.2
-	local roofSlope = 1.6
 	
-	createWedge(model, Vector3.new(0.5, roofSlope, upperWidth/2 + 0.7), 
-		baseCFrame * CFrame.new(-upperWidth/4, roofHeight, 0) * CFrame.Angles(0, -math.pi/2, math.pi/2), 
-		roofColor, Enum.Material.Slate)
+	-- Pente gauche
+	local leftRoof = Instance.new("Part")
+	leftRoof.Size = Vector3.new(upperDepth + 1, 0.4, upperWidth/2 + 1)
+	leftRoof.CFrame = baseCFrame * CFrame.new(-upperWidth/4, roofHeight, 0) * CFrame.Angles(0, 0, math.rad(30))
+	leftRoof.Color = roofColor
+	leftRoof.Material = Enum.Material.Slate
+	leftRoof.Anchored = true
+	leftRoof.TopSurface = Enum.SurfaceType.Smooth
+	leftRoof.BottomSurface = Enum.SurfaceType.Smooth
+	leftRoof.Parent = model
 	
-	createWedge(model, Vector3.new(0.5, roofSlope, upperWidth/2 + 0.7), 
-		baseCFrame * CFrame.new(upperWidth/4, roofHeight, 0) * CFrame.Angles(0, math.pi/2, -math.pi/2), 
-		roofColor, Enum.Material.Slate)
+	-- Pente droite
+	local rightRoof = Instance.new("Part")
+	rightRoof.Size = Vector3.new(upperDepth + 1, 0.4, upperWidth/2 + 1)
+	rightRoof.CFrame = baseCFrame * CFrame.new(upperWidth/4, roofHeight, 0) * CFrame.Angles(0, 0, -math.rad(30))
+	rightRoof.Color = roofColor
+	rightRoof.Material = Enum.Material.Slate
+	rightRoof.Anchored = true
+	rightRoof.TopSurface = Enum.SurfaceType.Smooth
+	rightRoof.BottomSurface = Enum.SurfaceType.Smooth
+	rightRoof.Parent = model
 	
 	-- Cheminée
 	local chimney = Instance.new("Part")
@@ -374,18 +411,31 @@ local function createVariant5House(model, size, baseCFrame)
 		baseCFrame * CFrame.new(0, wallHeight * 0.4, terraceDist) * CFrame.Angles(0, math.pi/2, -math.rad(25)), 
 		awningColor, Enum.Material.Slate)
 	
-	-- Toit principal
+	-- Toit principal à deux pentes
 	local roofColor = Color3.fromRGB(48, 43, 43)
 	local roofHeight = wallHeight + 1.9
-	local roofSlope = 1.5
 	
-	createWedge(model, Vector3.new(0.5, roofSlope, width/2 + 0.6), 
-		baseCFrame * CFrame.new(-width/4, roofHeight, 0) * CFrame.Angles(0, -math.pi/2, math.pi/2), 
-		roofColor, Enum.Material.Slate)
+	-- Pente gauche
+	local leftRoof = Instance.new("Part")
+	leftRoof.Size = Vector3.new(depth + 1, 0.4, width/2 + 1)
+	leftRoof.CFrame = baseCFrame * CFrame.new(-width/4, roofHeight, 0) * CFrame.Angles(0, 0, math.rad(30))
+	leftRoof.Color = roofColor
+	leftRoof.Material = Enum.Material.Slate
+	leftRoof.Anchored = true
+	leftRoof.TopSurface = Enum.SurfaceType.Smooth
+	leftRoof.BottomSurface = Enum.SurfaceType.Smooth
+	leftRoof.Parent = model
 	
-	createWedge(model, Vector3.new(0.5, roofSlope, width/2 + 0.6), 
-		baseCFrame * CFrame.new(width/4, roofHeight, 0) * CFrame.Angles(0, math.pi/2, -math.pi/2), 
-		roofColor, Enum.Material.Slate)
+	-- Pente droite
+	local rightRoof = Instance.new("Part")
+	rightRoof.Size = Vector3.new(depth + 1, 0.4, width/2 + 1)
+	rightRoof.CFrame = baseCFrame * CFrame.new(width/4, roofHeight, 0) * CFrame.Angles(0, 0, -math.rad(30))
+	rightRoof.Color = roofColor
+	rightRoof.Material = Enum.Material.Slate
+	rightRoof.Anchored = true
+	rightRoof.TopSurface = Enum.SurfaceType.Smooth
+	rightRoof.BottomSurface = Enum.SurfaceType.Smooth
+	rightRoof.Parent = model
 	
 	return frontWall
 end
